@@ -19,7 +19,6 @@ type ChatViewProps = {
   readonly historyTruncated?: boolean;
   readonly initialSession?: SessionState;
   readonly sharedStatus?: ChatStatus;
-  readonly shouldResume?: boolean;
   readonly title: string;
 };
 
@@ -132,7 +131,6 @@ export function ChatView({
   historyTruncated,
   initialSession,
   sharedStatus,
-  shouldResume,
   title,
 }: ChatViewProps) {
   const openSidebar = useChatStore((state) => state.openSidebar);
@@ -143,7 +141,6 @@ export function ChatView({
     events,
     initialSession,
     sharedStatus,
-    shouldResume,
   });
   const scroll = useChatScroll();
 

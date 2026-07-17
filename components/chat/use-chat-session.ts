@@ -1,5 +1,5 @@
-import { useMutation, useQuery } from "convex/react";
-import type { EveMessage, SessionState } from "eve/client";
+import { useQuery } from "convex/react";
+import { Client, type EveMessage, type SessionState } from "eve/client";
 import { useEveAgent } from "eve/react";
 import { useEffect, useMemo, useState } from "react";
 import { href, useNavigate } from "react-router";
@@ -19,7 +19,6 @@ type UseChatSessionOptions = {
   readonly events: readonly StoredEveEvent[];
   readonly initialSession?: SessionState;
   readonly sharedStatus?: ChatStatus;
-  readonly shouldResume?: boolean;
 };
 
 type PendingUserMessage = {
@@ -47,35 +46,18 @@ function getActivityLabel({ blocked, working }: ActivityState): string | undefin
   return "Thinking...";
 }
 
-function formatTranscript(messages: readonly EveMessage[], pending: readonly string[]): string {
-  const lines = messages.flatMap((message) => {
-    const text = message.parts
-      .filter((part) => part.type === "text")
-      .map((part) => part.text)
-      .join("\n");
-    return text ? [`${message.role === "user" ? "User" : "Assistant"}: ${text}`] : [];
-  });
-
-  return [
-    "Conversation before the previous run was stopped:",
-    ...lines,
-    ...pending.map((text) => `User: ${text}`),
-  ].join("\n\n");
-}
-
 export function useChatSession({
   chatId,
   events,
   initialSession,
   sharedStatus,
-  shouldResume,
 }: UseChatSessionOptions) {
   const navigate = useNavigate();
   const [localError, setLocalError] = useState<Error>();
   const [pendingMessage, setPendingMessage] = useState<PendingUserMessage>();
   const [stoppedMessages, setStoppedMessages] = useState<readonly PendingUserMessage[]>([]);
-  const agent = useEveAgent({ initialSession, optimistic: false });
-  const stopChat = useMutation(api.chats.stop);
+  const [clientSession] = useState(() => new Client({ host: "" }).session(initialSession));
+  const agent = useEveAgent({ optimistic: false, session: clientSession });
   const isAgentBusy = agent.status === "submitted" || agent.status === "streaming";
 
   let startedChatQuery: { sessionId: string } | "skip" = "skip";
@@ -142,17 +124,7 @@ export function useChatSession({
       text: message,
       userMessageCount: userMessageCount + visibleStoppedMessages.length,
     });
-    return send({
-      message,
-      ...(shouldResume
-        ? {
-            clientContext: formatTranscript(
-              messages,
-              visibleStoppedMessages.map(({ text }) => text),
-            ),
-          }
-        : {}),
-    });
+    return send({ message });
   }
 
   function answerQuestion(optionId: string): void {
@@ -166,15 +138,8 @@ export function useChatSession({
       setStoppedMessages((messages) => [...messages, visiblePendingMessage]);
       setPendingMessage(undefined);
     }
-    const sessionId = agent.session.sessionId;
-    if (!sessionId) return;
-
     try {
-      const response = await fetch(`/eve/v1/session/${encodeURIComponent(sessionId)}/stop`, {
-        method: "POST",
-      });
-      if (!response.ok) throw new Error("Could not stop this chat.");
-      await stopChat({ sessionId });
+      await clientSession.cancel();
     } catch (error) {
       setLocalError(asError(error, "Could not stop this chat."));
     }

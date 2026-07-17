@@ -6,6 +6,7 @@ export default defineSchema({
     continuationToken: v.optional(v.string()),
     createdAt: v.number(),
     eveSessionId: v.string(),
+    // Legacy stop-workaround fields; retained until existing documents are migrated.
     resumeAfterStop: v.optional(v.boolean()),
     revision: v.number(),
     sessionStreamIndex: v.optional(v.number()),
@@ -14,7 +15,6 @@ export default defineSchema({
     title: v.string(),
     updatedAt: v.number(),
   })
-    .index("by_continuation_token", ["continuationToken"])
     .index("by_eve_session", ["eveSessionId"])
     .index("by_updated_at", ["updatedAt"]),
 

@@ -35,6 +35,13 @@ describe("advanceChatLifecycle", () => {
       status: "ready",
     });
   });
+
+  it("becomes ready when a turn is cancelled", () => {
+    expect(advanceChatLifecycle("turn.cancelled", 2)).toEqual({
+      revision: 3,
+      status: "ready",
+    });
+  });
 });
 
 describe("deriveChatTitle", () => {

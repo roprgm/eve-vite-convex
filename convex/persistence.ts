@@ -29,35 +29,11 @@ async function getOrCreateChat(
     .unique();
   if (existing) return existing;
 
-  const resumed = session.continuationToken
-    ? await ctx.db
-        .query("chats")
-        .withIndex("by_continuation_token", (q) =>
-          q.eq("continuationToken", session.continuationToken),
-        )
-        .unique()
-    : null;
-  if (resumed?.resumeAfterStop) {
-    await ctx.db.patch(resumed._id, {
-      eveSessionId: session.eveSessionId,
-      resumeAfterStop: false,
-      sessionStreamIndex: 0,
-    });
-    return {
-      ...resumed,
-      eveSessionId: session.eveSessionId,
-      resumeAfterStop: false,
-      sessionStreamIndex: 0,
-    };
-  }
-  if (resumed) return resumed;
-
   const chatId = await ctx.db.insert("chats", {
     continuationToken: session.continuationToken,
     createdAt,
     eveSessionId: session.eveSessionId,
     revision: 0,
-    sessionStreamIndex: 0,
     status: "running",
     streamIndex: 0,
     title: "New chat",
@@ -107,22 +83,13 @@ export const persistEvent = mutation({
       index: chat.streamIndex,
     });
 
-    const isCurrentSession = chat.eveSessionId === args.eveSessionId;
     const lifecycle = advanceChatLifecycle(eventType, chat.revision);
-    const status = chat.resumeAfterStop
-      ? "ready"
-      : isCurrentSession
-        ? lifecycle.status
-        : chat.status;
     await ctx.db.patch(chatId, {
       continuationToken: args.continuationToken,
-      revision: isCurrentSession ? lifecycle.revision : chat.revision,
-      sessionStreamIndex: isCurrentSession
-        ? (chat.sessionStreamIndex ?? chat.streamIndex) + 1
-        : chat.sessionStreamIndex,
-      status,
+      revision: lifecycle.revision,
+      status: lifecycle.status,
       streamIndex: chat.streamIndex + 1,
-      updatedAt: isCurrentSession ? createdAt : chat.updatedAt,
+      updatedAt: createdAt,
     });
 
     if (eventType !== "message.received") {

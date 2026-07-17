@@ -47,6 +47,7 @@ export function advanceChatLifecycle(eventType: string, revision: number): ChatL
   if (
     eventType === "session.completed" ||
     eventType === "session.waiting" ||
+    eventType === "turn.cancelled" ||
     eventType === "turn.completed"
   ) {
     return { revision: revision + 1, status: "ready" };
