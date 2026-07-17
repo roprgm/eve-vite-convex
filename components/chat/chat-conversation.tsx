@@ -22,10 +22,17 @@ export function ChatConversation({ session }: ChatConversationProps) {
           session.isGenerating &&
           message.role === "assistant" &&
           message.id === session.latestAssistantMessageId;
-        return <ChatMessage isActive={isActive} key={message.id} message={message} />;
+        return (
+          <ChatMessage
+            createdAt={session.messageCreatedAt.get(message.id)}
+            isActive={isActive}
+            key={message.id}
+            message={message}
+          />
+        );
       })}
-      {session.visiblePendingMessages.map(({ id, text }) => (
-        <UserMessage key={id} text={text} />
+      {session.visiblePendingMessages.map(({ createdAt, id, text }) => (
+        <UserMessage createdAt={createdAt} key={id} text={text} />
       ))}
       {session.activityLabel && <ModelActivity label={session.activityLabel} />}
     </div>

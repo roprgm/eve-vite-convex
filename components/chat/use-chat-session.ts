@@ -11,7 +11,11 @@ import {
   findLatestAssistantMessageId,
   hasAssistantTextAfterLatestUser,
 } from "@/lib/chat-message-utils";
-import { createEveMessageProjector, type StoredEveEvent } from "@/lib/eve-events";
+import {
+  createEveMessageProjector,
+  projectMessageCreatedAt,
+  type StoredEveEvent,
+} from "@/lib/eve-events";
 import { findPendingInput } from "@/lib/pending-input";
 
 type UseChatSessionOptions = {
@@ -22,6 +26,7 @@ type UseChatSessionOptions = {
 };
 
 type PendingUserMessage = {
+  readonly createdAt: number;
   readonly id: string;
   readonly text: string;
   readonly userMessageCount: number;
@@ -68,6 +73,7 @@ export function useChatSession({
 
   const projectMessages = useMemo(createEveMessageProjector, []);
   const persistedMessages = useMemo(() => projectMessages(events), [events, projectMessages]);
+  const messageCreatedAt = useMemo(() => projectMessageCreatedAt(events), [events]);
   let messages: readonly EveMessage[] = agent.data.messages;
   if (chatId) messages = persistedMessages;
 
@@ -120,6 +126,7 @@ export function useChatSession({
     }
 
     setPendingMessage({
+      createdAt: Date.now(),
       id: crypto.randomUUID(),
       text: message,
       userMessageCount: userMessageCount + visibleStoppedMessages.length,
@@ -152,6 +159,7 @@ export function useChatSession({
     isEmpty: messages.length === 0 && !visiblePendingMessage && visibleStoppedMessages.length === 0,
     isGenerating: isWorking,
     latestAssistantMessageId: findLatestAssistantMessageId(messages),
+    messageCreatedAt,
     messages,
     needsOption,
     pendingInput,

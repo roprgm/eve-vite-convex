@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { projectEveMessages, type StoredEveEvent } from "@/lib/eve-events";
+import { projectEveMessages, projectMessageCreatedAt, type StoredEveEvent } from "@/lib/eve-events";
 
 function userEvent(sessionId: string, message: string): StoredEveEvent {
   return {
@@ -28,5 +28,13 @@ describe("projectEveMessages", () => {
       "run-1:turn_0:user",
       "run-2:turn_0:user",
     ]);
+  });
+});
+
+describe("projectMessageCreatedAt", () => {
+  it("uses the persisted event time for the projected message", () => {
+    const event = { ...userEvent("run-1", "hi"), createdAt: 1_721_234_567_890 };
+
+    expect(projectMessageCreatedAt([event]).get("run-1:turn_0:user")).toBe(event.createdAt);
   });
 });

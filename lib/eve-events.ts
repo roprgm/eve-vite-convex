@@ -1,6 +1,7 @@
 import { defaultMessageReducer, type EveMessage, type HandleMessageStreamEvent } from "eve/client";
 
 export type StoredEveEvent = {
+  readonly createdAt?: number;
   readonly event: unknown;
   readonly eventKey: string;
   readonly eveSessionId: string;
@@ -52,4 +53,29 @@ export function createEveMessageProjector() {
 
 export function projectEveMessages(events: readonly StoredEveEvent[]): EveMessage[] {
   return createEveMessageProjector()(events);
+}
+
+export function projectMessageCreatedAt(
+  events: readonly StoredEveEvent[],
+): ReadonlyMap<string, number> {
+  const createdAtByMessageId = new Map<string, number>();
+
+  for (const storedEvent of events) {
+    if (!isEveEvent(storedEvent.event) || !("data" in storedEvent.event)) continue;
+
+    const { data, type } = storedEvent.event;
+    if (!data || typeof data !== "object" || !("turnId" in data)) continue;
+    if (typeof data.turnId !== "string") continue;
+
+    const eventTime = "meta" in storedEvent.event ? storedEvent.event.meta?.at : undefined;
+    const parsedEventTime = eventTime ? Date.parse(eventTime) : Number.NaN;
+    const createdAt = storedEvent.createdAt ?? parsedEventTime;
+    if (!Number.isFinite(createdAt)) continue;
+
+    const role = type === "message.received" ? "user" : "assistant";
+    const messageId = `${storedEvent.eveSessionId}:${data.turnId}:${role}`;
+    if (!createdAtByMessageId.has(messageId)) createdAtByMessageId.set(messageId, createdAt);
+  }
+
+  return createdAtByMessageId;
 }
