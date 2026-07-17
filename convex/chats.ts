@@ -49,8 +49,12 @@ export const stop = mutation({
       .query("chats")
       .withIndex("by_eve_session", (q) => q.eq("eveSessionId", sessionId))
       .unique();
-    if (chat?.status === "running") {
-      await ctx.db.patch(chat._id, { status: "ready", updatedAt: Date.now() });
+    if (chat) {
+      await ctx.db.patch(chat._id, {
+        resumeAfterStop: true,
+        status: "ready",
+        updatedAt: Date.now(),
+      });
     }
   },
 });

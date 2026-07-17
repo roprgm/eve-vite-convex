@@ -19,6 +19,7 @@ type UseChatSessionOptions = {
   readonly events: readonly StoredEveEvent[];
   readonly initialSession?: SessionState;
   readonly sharedStatus?: ChatStatus;
+  readonly shouldResume?: boolean;
 };
 
 type PendingUserMessage = {
@@ -45,15 +46,29 @@ function getActivityLabel({ blocked, working }: ActivityState): string | undefin
   return "Thinking...";
 }
 
+function formatTranscript(messages: readonly EveMessage[], pending: readonly string[]): string {
+  const lines = messages.flatMap((message) => {
+    const text = message.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+    return text ? [`${message.role === "user" ? "User" : "Assistant"}: ${text}`] : [];
+  });
+
+  return ["Conversation before the previous run was stopped:", ...lines, ...pending.map((text) => `User: ${text}`)].join("\n\n");
+}
+
 export function useChatSession({
   chatId,
   events,
   initialSession,
   sharedStatus,
+  shouldResume,
 }: UseChatSessionOptions) {
   const navigate = useNavigate();
   const [localError, setLocalError] = useState<Error>();
   const [pendingMessage, setPendingMessage] = useState<PendingUserMessage>();
+  const [stoppedMessages, setStoppedMessages] = useState<readonly PendingUserMessage[]>([]);
   const agent = useEveAgent({ initialSession, optimistic: false });
   const stopChat = useMutation(api.chats.stop);
   const isAgentBusy = agent.status === "submitted" || agent.status === "streaming";
@@ -70,6 +85,9 @@ export function useChatSession({
   if (chatId) messages = persistedMessages;
 
   const userMessageCount = countUserMessages(messages);
+  const visibleStoppedMessages = stoppedMessages.filter(
+    (message, index) => userMessageCount <= message.userMessageCount + index,
+  );
   let visiblePendingMessage: PendingUserMessage | undefined;
   if (pendingMessage && userMessageCount <= pendingMessage.userMessageCount) {
     visiblePendingMessage = pendingMessage;
@@ -114,8 +132,21 @@ export function useChatSession({
       return send({ inputResponses: [{ requestId: pendingInput.requestId, text: message }] });
     }
 
-    setPendingMessage({ text: message, userMessageCount });
-    return send({ message });
+    setPendingMessage({
+      text: message,
+      userMessageCount: userMessageCount + visibleStoppedMessages.length,
+    });
+    return send({
+      message,
+      ...(shouldResume
+        ? {
+            clientContext: formatTranscript(
+              messages,
+              visibleStoppedMessages.map(({ text }) => text),
+            ),
+          }
+        : {}),
+    });
   }
 
   function answerQuestion(optionId: string): void {
@@ -125,7 +156,10 @@ export function useChatSession({
 
   async function stop(): Promise<void> {
     agent.stop();
-    setPendingMessage(undefined);
+    if (visiblePendingMessage) {
+      setStoppedMessages((messages) => [...messages, visiblePendingMessage]);
+      setPendingMessage(undefined);
+    }
     const sessionId = agent.session.sessionId;
     if (!sessionId) return;
 
@@ -144,7 +178,8 @@ export function useChatSession({
     answerQuestion,
     activityLabel,
     error,
-    isEmpty: messages.length === 0 && !visiblePendingMessage,
+    isEmpty:
+      messages.length === 0 && !visiblePendingMessage && visibleStoppedMessages.length === 0,
     isGenerating: isWorking,
     latestAssistantMessageId: findLatestAssistantMessageId(messages),
     messages,
@@ -152,6 +187,9 @@ export function useChatSession({
     pendingInput,
     sendMessage,
     stop,
-    visiblePendingText: visiblePendingMessage?.text,
+    visiblePendingTexts: [
+      ...visibleStoppedMessages.map(({ text }) => text),
+      ...(visiblePendingMessage ? [visiblePendingMessage.text] : []),
+    ],
   };
 }

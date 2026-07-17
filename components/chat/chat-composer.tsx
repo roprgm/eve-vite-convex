@@ -50,7 +50,6 @@ type ChatComposerProps = {
   readonly needsOption: boolean;
   readonly onSend: (message: string) => Promise<boolean>;
   readonly onStop: () => void;
-  readonly shouldAutoFocus: boolean;
 };
 
 function useComposerFocus(
@@ -58,14 +57,8 @@ function useComposerFocus(
   needsOption: boolean,
   textareaRef: RefObject<HTMLTextAreaElement | null>,
 ): void {
-  const wasGeneratingRef = useRef(false);
-
   useEffect(() => {
-    if (wasGeneratingRef.current && !isGenerating && !needsOption) {
-      textareaRef.current?.focus();
-    }
-
-    wasGeneratingRef.current = isGenerating;
+    if (!isGenerating && !needsOption) textareaRef.current?.focus();
   }, [isGenerating, needsOption, textareaRef]);
 }
 
@@ -75,16 +68,11 @@ export function ChatComposer({
   needsOption,
   onSend,
   onStop,
-  shouldAutoFocus,
 }: ChatComposerProps) {
   const draft = useChatStore((state) => state.drafts[draftKey] ?? "");
   const setDraft = useChatStore((state) => state.setDraft);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useComposerFocus(isGenerating, needsOption, textareaRef);
-
-  useEffect(() => {
-    if (shouldAutoFocus && !needsOption) textareaRef.current?.focus();
-  }, [needsOption, shouldAutoFocus]);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;

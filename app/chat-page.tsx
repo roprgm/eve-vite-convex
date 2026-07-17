@@ -15,7 +15,7 @@ function getInitialSession(chat: Doc<"chats">) {
   return {
     continuationToken: toClientContinuationToken(chat.continuationToken),
     sessionId: chat.eveSessionId,
-    streamIndex: chat.streamIndex,
+    streamIndex: chat.sessionStreamIndex ?? chat.streamIndex,
   };
 }
 
@@ -82,6 +82,7 @@ function ChatPageContent({ chatId }: { readonly chatId?: string }) {
       initialSession={getInitialSession(chat)}
       key={getSessionRevisionKey(chat)}
       sharedStatus={chat.status}
+      shouldResume={chat.resumeAfterStop}
       title={chat.title}
     />
   );

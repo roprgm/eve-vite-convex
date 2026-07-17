@@ -6,12 +6,15 @@ export default defineSchema({
     continuationToken: v.optional(v.string()),
     createdAt: v.number(),
     eveSessionId: v.string(),
+    resumeAfterStop: v.optional(v.boolean()),
     revision: v.number(),
+    sessionStreamIndex: v.optional(v.number()),
     status: v.union(v.literal("ready"), v.literal("running"), v.literal("error")),
     streamIndex: v.number(),
     title: v.string(),
     updatedAt: v.number(),
   })
+    .index("by_continuation_token", ["continuationToken"])
     .index("by_eve_session", ["eveSessionId"])
     .index("by_updated_at", ["updatedAt"]),
 
