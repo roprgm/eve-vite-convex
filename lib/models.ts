@@ -10,10 +10,6 @@ export type ModelId = (typeof MODEL_OPTIONS)[number]["value"];
 export const DEFAULT_MODEL_ID: ModelId = MODEL_OPTIONS[0].value;
 export const MODEL_HEADER = "x-eve-model";
 
-export function getModelOption(value: unknown) {
-  return MODEL_OPTIONS.find((model) => model.value === value);
-}
-
 export function isModelId(value: unknown): value is ModelId {
-  return getModelOption(value) !== undefined;
+  return MODEL_OPTIONS.some((model) => model.value === value);
 }

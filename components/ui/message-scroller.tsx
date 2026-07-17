@@ -1,6 +1,5 @@
 import { MessageScroller as MessageScrollerPrimitive } from "@shadcn/react/message-scroller";
 import { ArrowDown } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
 import type { ComponentProps, PropsWithChildren } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -27,26 +26,6 @@ function MessageScroller({ children }: PropsWithChildren) {
   );
 }
 
-const MotionMessageScrollerItem = motion.create(MessageScrollerItem);
-
-function MessageScrollerAnimatedItem({
-  children,
-  messageId,
-}: PropsWithChildren<{ readonly messageId: string }>) {
-  const shouldReduceMotion = useReducedMotion();
-
-  return (
-    <MotionMessageScrollerItem
-      animate={{ opacity: 1, y: 0 }}
-      initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
-      messageId={messageId}
-      transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-    >
-      {children}
-    </MotionMessageScrollerItem>
-  );
-}
-
 function MessageScrollerItem({
   className,
   ...props
@@ -59,4 +38,4 @@ function MessageScrollerItem({
   );
 }
 
-export { MessageScroller, MessageScrollerAnimatedItem, MessageScrollerItem };
+export { MessageScroller, MessageScrollerItem };

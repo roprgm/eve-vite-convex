@@ -1,40 +1,36 @@
 import { useMutation } from "convex/react";
-import { useEffect, useRef, useState } from "react";
+import { type MouseEvent, useState } from "react";
 import { useMatch, useNavigate } from "react-router";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import { useChatStore } from "@/lib/chat-store";
+import type { Doc } from "@/convex/_generated/dataModel";
 
-export function DeleteChatDialog() {
-  const target = useChatStore((state) => state.deleteTarget);
-  const closeDelete = useChatStore((state) => state.closeDelete);
+export type DeleteTarget = Pick<Doc<"chats">, "_id" | "title">;
+
+type DeleteChatDialogProps = {
+  readonly onClose: () => void;
+  readonly target?: DeleteTarget;
+};
+
+export function DeleteChatDialog({ onClose, target }: DeleteChatDialogProps) {
   const removeChat = useMutation(api.chats.remove);
   const selectedChatId = useMatch("/c/:chatId")?.params.chatId;
   const navigate = useNavigate();
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState<string>();
   const [isPending, setIsPending] = useState(false);
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (target && !dialog?.open) {
-      setError(undefined);
-      dialog?.showModal();
-    }
-    if (!target && dialog?.open) dialog.close();
-  }, [target]);
-
-  async function confirmDelete(): Promise<void> {
+  async function confirmDelete(event: MouseEvent<HTMLButtonElement>): Promise<void> {
     if (!target) return;
+    const dialog = event.currentTarget.closest("dialog");
     setError(undefined);
     setIsPending(true);
 
     try {
-      await removeChat({ id: target.id });
-      if (target.id === selectedChatId) void navigate("/");
-      closeDelete();
+      await removeChat({ id: target._id });
+      if (target._id === selectedChatId) void navigate("/");
+      dialog?.close();
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not delete chat.");
     } finally {
@@ -46,9 +42,12 @@ export function DeleteChatDialog() {
     <dialog
       aria-labelledby="delete-chat-title"
       className="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl border bg-card p-0 text-card-foreground shadow-2xl backdrop:bg-black/70"
+      id="delete-chat-dialog"
       onCancel={(event) => isPending && event.preventDefault()}
-      onClose={closeDelete}
-      ref={dialogRef}
+      onClose={() => {
+        setError(undefined);
+        onClose();
+      }}
     >
       <div className="p-5">
         <h2 className="font-medium" id="delete-chat-title">
@@ -62,14 +61,14 @@ export function DeleteChatDialog() {
             {error}
           </Alert>
         )}
-        <div className="mt-5 flex justify-end gap-2">
-          <Button autoFocus disabled={isPending} onClick={closeDelete} variant="outline">
+        <form className="mt-5 flex justify-end gap-2" method="dialog">
+          <Button autoFocus disabled={isPending} type="submit" variant="outline">
             Cancel
           </Button>
-          <Button disabled={isPending} onClick={() => void confirmDelete()} variant="destructive">
+          <Button disabled={isPending} onClick={confirmDelete} variant="destructive">
             Delete
           </Button>
-        </div>
+        </form>
       </div>
     </dialog>
   );

@@ -51,10 +51,6 @@ export function getEventKey(event: HandleMessageStreamEvent): string {
   ].join(":");
 }
 
-export function getSessionEventKey(sessionId: string, event: HandleMessageStreamEvent): string {
-  return `${sessionId}:${getEventKey(event)}`;
-}
-
 export function toSerializableEvent(event: HandleMessageStreamEvent): Value {
   return JSON.parse(JSON.stringify(event)) as Value;
 }
@@ -83,7 +79,7 @@ function enqueueEvent(event: HandleMessageStreamEvent, ctx: HookContext, streamA
       await persistence.client.mutation(persistEventMutation, {
         continuationToken: toClientContinuationToken(ctx.channel.continuationToken),
         event: toSerializableEvent(event),
-        eventKey: getSessionEventKey(sessionId, event),
+        eventKey: `${sessionId}:${getEventKey(event)}`,
         eveSessionId: sessionId,
         secret: persistence.secret,
         streamAdvance,

@@ -1,43 +1,26 @@
 import { usePaginatedQuery } from "convex/react";
-import { LoaderCircle, SquarePen, Trash2, X } from "lucide-react";
+import { AlignLeft, LoaderCircle, SquarePen, Trash2, X } from "lucide-react";
+import { useState } from "react";
 import { href, Link, useNavigate } from "react-router";
 
+import { DeleteChatDialog, type DeleteTarget } from "@/components/chat/delete-chat-dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { NEW_CHAT_DRAFT, useChatStore } from "@/lib/chat-store";
 import { cn } from "@/lib/cn";
 
-function EveLogo() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="size-[15px] shrink-0 text-muted-foreground"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M3 6h18M3 12h9M3 18h11" />
-    </svg>
-  );
-}
-
 function ChatRow({
   chat,
   isSelected,
+  onDelete,
+  onNavigate,
 }: {
   readonly chat: Doc<"chats">;
   readonly isSelected: boolean;
+  readonly onDelete: (chat: DeleteTarget) => void;
+  readonly onNavigate: () => void;
 }) {
-  const closeSidebar = useChatStore((state) => state.closeSidebar);
-  const openDelete = useChatStore((state) => state.openDelete);
-  let ariaCurrent: "page" | undefined;
-  if (isSelected) ariaCurrent = "page";
-
   return (
     <div
       className={cn(
@@ -47,9 +30,9 @@ function ChatRow({
       )}
     >
       <Link
-        aria-current={ariaCurrent}
+        aria-current={isSelected ? "page" : undefined}
         className="flex h-full min-w-0 flex-1 items-center px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
-        onClick={closeSidebar}
+        onClick={isSelected ? onNavigate : undefined}
         to={href("/c/:chatId", { chatId: chat._id })}
       >
         <span className="block truncate">{chat.title}</span>
@@ -63,7 +46,7 @@ function ChatRow({
         <Button
           aria-label={`Delete ${chat.title}`}
           className="mr-0.5 text-muted-foreground md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-          onClick={() => openDelete({ id: chat._id, title: chat.title })}
+          onClick={() => onDelete(chat)}
           size="icon-sm"
           variant="destructive-ghost"
         >
@@ -74,30 +57,40 @@ function ChatRow({
   );
 }
 
-export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: string | null }) {
+type ChatSidebarProps = {
+  readonly isOpen: boolean;
+  readonly onClose: () => void;
+  readonly selectedChatId: string | null;
+};
+
+export function ChatSidebar({ isOpen, onClose, selectedChatId }: ChatSidebarProps) {
   const { results, status, loadMore } = usePaginatedQuery(
     api.chats.list,
     {},
     { initialNumItems: 50 },
   );
-  const isSidebarOpen = useChatStore((state) => state.isSidebarOpen);
-  const closeSidebar = useChatStore((state) => state.closeSidebar);
   const setDraft = useChatStore((state) => state.setDraft);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>();
   const navigate = useNavigate();
 
+  function openDelete(target: DeleteTarget): void {
+    setDeleteTarget(target);
+    document.querySelector<HTMLDialogElement>("#delete-chat-dialog")?.showModal();
+  }
+
   function openNewChat(): void {
-    closeSidebar();
     setDraft(NEW_CHAT_DRAFT, "");
+    if (selectedChatId === null) onClose();
     void navigate("/");
   }
 
   return (
     <>
-      {isSidebarOpen && (
+      {isOpen && (
         <button
           aria-hidden="true"
           className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          onClick={closeSidebar}
+          onClick={onClose}
           tabIndex={-1}
           type="button"
         />
@@ -105,12 +98,12 @@ export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: strin
       <aside
         className={cn(
           "invisible fixed inset-y-0 left-0 z-50 flex w-[min(18rem,85vw)] -translate-x-full flex-col border-r bg-sidebar p-3 text-sidebar-foreground shadow-2xl transition md:visible md:static md:z-auto md:w-72 md:translate-x-0 md:p-2 md:shadow-none",
-          isSidebarOpen && "visible translate-x-0",
+          isOpen && "visible translate-x-0",
         )}
       >
         <div className="flex h-10 items-center justify-between px-2">
           <div className="flex min-w-0 items-center gap-2.5">
-            <EveLogo />
+            <AlignLeft aria-hidden="true" className="text-muted-foreground" />
             <span className="truncate">Eve Chat</span>
           </div>
           <div className="flex">
@@ -126,7 +119,7 @@ export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: strin
             <Button
               aria-label="Close chats"
               className="text-muted-foreground md:hidden"
-              onClick={closeSidebar}
+              onClick={onClose}
               size="icon-sm"
               variant="ghost"
             >
@@ -140,7 +133,13 @@ export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: strin
         >
           <p className="px-2 pb-1.5 text-sm font-medium text-muted-foreground">Chats</p>
           {results.map((chat) => (
-            <ChatRow chat={chat} isSelected={selectedChatId === chat._id} key={chat._id} />
+            <ChatRow
+              chat={chat}
+              isSelected={selectedChatId === chat._id}
+              key={chat._id}
+              onDelete={openDelete}
+              onNavigate={onClose}
+            />
           ))}
           {status === "CanLoadMore" && (
             <Button className="mt-3 w-full" onClick={() => loadMore(50)} size="sm" variant="ghost">
@@ -149,6 +148,7 @@ export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: strin
           )}
         </nav>
       </aside>
+      <DeleteChatDialog onClose={() => setDeleteTarget(undefined)} target={deleteTarget} />
     </>
   );
 }

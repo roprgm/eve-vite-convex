@@ -1,16 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import {
-  advanceChatLifecycle,
-  deriveChatTitle,
-  parseEventType,
-  parseMessageEvent,
-} from "../lib/chat-logic";
+import { advanceChatLifecycle, deriveChatTitle } from "../lib/chat-logic";
 import type { Doc } from "./_generated/dataModel";
 import { type MutationCtx, mutation } from "./_generated/server";
 
-function eventTime(event: { meta?: { at: string } }): number {
-  const timestamp = event.meta ? Date.parse(event.meta.at) : Number.NaN;
-  return Number.isFinite(timestamp) ? timestamp : Date.now();
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 type ChatSession = {
@@ -58,10 +52,11 @@ export const persistEvent = mutation({
       throw new ConvexError("Invalid eve persistence secret.");
     }
 
-    const eventType = parseEventType(args.event);
-    if (!eventType) throw new ConvexError("Invalid eve event.");
-    const parsedEvent = parseMessageEvent(args.event);
-    const createdAt = parsedEvent ? eventTime(parsedEvent) : Date.now();
+    if (!isRecord(args.event) || typeof args.event.type !== "string") {
+      throw new ConvexError("Invalid eve event.");
+    }
+    const eventTime = isRecord(args.event.meta) ? Date.parse(String(args.event.meta.at)) : NaN;
+    const createdAt = Number.isFinite(eventTime) ? eventTime : Date.now();
     const chat = await getOrCreateChat(ctx, args, createdAt);
     const chatId = chat._id;
 
@@ -84,7 +79,7 @@ export const persistEvent = mutation({
       index: chat.streamIndex + args.streamAdvance - 1,
     });
 
-    const lifecycle = advanceChatLifecycle(eventType, chat.revision);
+    const lifecycle = advanceChatLifecycle(args.event.type, chat.revision);
     await ctx.db.patch(chatId, {
       continuationToken: args.continuationToken,
       revision: lifecycle.revision,
@@ -93,12 +88,8 @@ export const persistEvent = mutation({
       updatedAt: createdAt,
     });
 
-    if (eventType !== "message.received") {
-      return null;
-    }
-
-    const message = parsedEvent?.data.message;
-    if (!message || chat.title !== "New chat") return null;
+    const message = isRecord(args.event.data) ? args.event.data.message : undefined;
+    if (typeof message !== "string" || chat.title !== "New chat") return null;
 
     await ctx.db.patch(chatId, { title: deriveChatTitle(message) });
 

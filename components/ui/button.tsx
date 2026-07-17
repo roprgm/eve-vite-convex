@@ -39,7 +39,6 @@ export function Button({
         sizes[size],
         className,
       )}
-      data-slot="button"
       type={type}
       {...props}
     />

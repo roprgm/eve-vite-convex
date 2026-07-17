@@ -1,6 +1,7 @@
 import { useQuery } from "convex/react";
 import {
   Client,
+  type EveMessage,
   type HandleMessageStreamEvent,
   type SendTurnPayload,
   type SessionState,
@@ -10,17 +11,9 @@ import { useEffect, useMemo, useState } from "react";
 import { href, useNavigate } from "react-router";
 
 import { api } from "@/convex/_generated/api";
-import { type ChatStatus, getActivityLabel } from "@/lib/chat-logic";
-import { countUserMessages, hasAssistantTextAfterLatestUser } from "@/lib/chat-message-utils";
+import type { ChatStatus } from "@/lib/chat-logic";
 import { useChatStore } from "@/lib/chat-store";
-import {
-  namespaceEveMessages,
-  projectEveEvents,
-  projectEveMessages,
-  projectMessageCreatedAt,
-  projectReasoningDurationSeconds,
-  type StoredEveEvent,
-} from "@/lib/eve-events";
+import { namespaceEveMessages, projectEveChat, type StoredEveEvent } from "@/lib/eve-events";
 import { MODEL_HEADER } from "@/lib/models";
 import { findPendingInput, isSessionLimitRequest } from "@/lib/pending-input";
 
@@ -33,6 +26,7 @@ type UseChatSessionOptions = {
 };
 
 type PendingUserMessage = {
+  readonly active: boolean;
   readonly createdAt: number;
   readonly id: string;
   readonly text: string;
@@ -51,6 +45,15 @@ function asError(error: unknown, fallback: string): Error {
   return new Error(fallback);
 }
 
+function hasAssistantTextAfterLatestUser(messages: readonly EveMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role === "user") return false;
+    if (message.parts.some((part) => part.type === "text" && part.text.trim())) return true;
+  }
+  return false;
+}
+
 export function useChatSession({
   chatId,
   events,
@@ -60,11 +63,11 @@ export function useChatSession({
 }: UseChatSessionOptions) {
   const navigate = useNavigate();
   const selectedModel = useChatStore((state) => state.selectedModel);
+  const persisted = useMemo(() => projectEveChat(events), [events]);
   const [localError, setLocalError] = useState<Error>();
-  const [pendingMessage, setPendingMessage] = useState<PendingUserMessage>();
-  const [stoppedMessages, setStoppedMessages] = useState<readonly PendingUserMessage[]>([]);
+  const [pendingMessages, setPendingMessages] = useState<readonly PendingUserMessage[]>([]);
   const [clientSession] = useState(() => new Client({ host: "" }).session(initialSession));
-  const [startingEvents] = useState(() => initialEvents ?? projectEveEvents(events));
+  const [startingEvents] = useState(() => initialEvents ?? persisted.events);
   const agent = useEveAgent({
     initialEvents: startingEvents,
     optimistic: false,
@@ -72,31 +75,25 @@ export function useChatSession({
   });
   const isAgentBusy = agent.status === "submitted" || agent.status === "streaming";
 
-  let startedChatQuery: { sessionId: string } | "skip" = "skip";
-  if (!chatId && agent.session.sessionId) {
-    startedChatQuery = { sessionId: agent.session.sessionId };
-  }
-  const startedChatId = useQuery(api.chats.getByEveSession, startedChatQuery);
+  const startedChatId = useQuery(
+    api.chats.getByEveSession,
+    !chatId && agent.session.sessionId ? { sessionId: agent.session.sessionId } : "skip",
+  );
 
-  const persistedMessages = useMemo(() => projectEveMessages(events), [events]);
   const localMessages = useMemo(
     () => namespaceEveMessages(agent.data.messages, agent.session.sessionId, events),
     [agent.data.messages, agent.session.sessionId, events],
   );
-  const messageCreatedAt = useMemo(() => projectMessageCreatedAt(events), [events]);
-  const reasoningDurationSeconds = useMemo(() => projectReasoningDurationSeconds(events), [events]);
   const persistedStreamIndex = (events.at(-1)?.index ?? -1) + 1;
   const useLocalMessages = isAgentBusy || agent.session.streamIndex > persistedStreamIndex;
-  const messages = useLocalMessages ? localMessages : persistedMessages;
+  const messages = useLocalMessages ? localMessages : persisted.messages;
 
-  const userMessageCount = countUserMessages(messages);
-  const visibleStoppedMessages = stoppedMessages.filter(
+  const userMessageCount = messages.filter((message) => message.role === "user").length;
+  const visiblePendingMessages = pendingMessages.filter(
     (message) => userMessageCount <= message.userMessageCount,
   );
-  let visiblePendingMessage: PendingUserMessage | undefined;
-  if (pendingMessage && userMessageCount <= pendingMessage.userMessageCount) {
-    visiblePendingMessage = pendingMessage;
-  }
+  const lastPendingMessage = visiblePendingMessages.at(-1);
+  const activePendingMessage = lastPendingMessage?.active ? lastPendingMessage : undefined;
   const pendingInput = findPendingInput(messages);
   const sessionLimitReached = isSessionLimitRequest(pendingInput);
   const visiblePendingInput = sessionLimitReached ? undefined : pendingInput;
@@ -104,23 +101,16 @@ export function useChatSession({
     visiblePendingInput?.options?.length && !visiblePendingInput.allowFreeform,
   );
   const assistantTextHasStarted =
-    !visiblePendingMessage && hasAssistantTextAfterLatestUser(messages);
+    !activePendingMessage && hasAssistantTextAfterLatestUser(messages);
   const isGenerating = sharedStatus === "running" || isAgentBusy;
-  const isWorking = isGenerating || Boolean(visiblePendingMessage);
-  let persistedError: Error | undefined;
-  if (sharedStatus === "error" && !isAgentBusy) persistedError = PERSISTED_CHAT_ERROR;
+  const isWorking = isGenerating || Boolean(activePendingMessage);
   const error = sessionLimitReached
     ? SESSION_TOKEN_LIMIT_ERROR
-    : (localError ?? agent.error ?? persistedError);
-  const activityLabel = getActivityLabel({
-    blocked: Boolean(pendingInput) || assistantTextHasStarted,
-    failed: Boolean(error),
-    working: isWorking,
-  });
-
-  useEffect(() => {
-    if (pendingMessage && assistantTextHasStarted) setPendingMessage(undefined);
-  }, [assistantTextHasStarted, pendingMessage]);
+    : (localError ??
+      agent.error ??
+      (sharedStatus === "error" && !isAgentBusy ? PERSISTED_CHAT_ERROR : undefined));
+  const activityLabel =
+    isWorking && !pendingInput && !assistantTextHasStarted && !error ? "Thinking..." : undefined;
 
   useEffect(() => {
     if (chatId || isAgentBusy || !startedChatId) return;
@@ -145,7 +135,6 @@ export function useChatSession({
       });
       return true;
     } catch (error) {
-      setPendingMessage(undefined);
       setLocalError(asError(error, "Could not send message."));
       return false;
     }
@@ -156,13 +145,19 @@ export function useChatSession({
       return send({ inputResponses: [{ requestId: pendingInput.requestId, text: message }] });
     }
 
-    setPendingMessage({
+    const pendingMessage: PendingUserMessage = {
+      active: true,
       createdAt: Date.now(),
       id: crypto.randomUUID(),
       text: message,
-      userMessageCount: userMessageCount + visibleStoppedMessages.length,
-    });
-    return send({ message });
+      userMessageCount: userMessageCount + visiblePendingMessages.length,
+    };
+    setPendingMessages((messages) => [...messages, pendingMessage]);
+    const sent = await send({ message });
+    if (!sent) {
+      setPendingMessages((messages) => messages.filter(({ id }) => id !== pendingMessage.id));
+    }
+    return sent;
   }
 
   function answerQuestion(optionId: string): void {
@@ -172,9 +167,12 @@ export function useChatSession({
 
   async function stop(): Promise<void> {
     agent.stop();
-    if (visiblePendingMessage) {
-      setStoppedMessages((messages) => [...messages, visiblePendingMessage]);
-      setPendingMessage(undefined);
+    if (activePendingMessage) {
+      setPendingMessages((messages) =>
+        messages.map((message) =>
+          message.id === activePendingMessage.id ? { ...message, active: false } : message,
+        ),
+      );
     }
     try {
       await clientSession.cancel();
@@ -187,19 +185,16 @@ export function useChatSession({
     answerQuestion,
     activityLabel,
     error,
-    isEmpty: messages.length === 0 && !visiblePendingMessage && visibleStoppedMessages.length === 0,
+    isEmpty: messages.length === 0 && visiblePendingMessages.length === 0,
     isGenerating: isWorking && !error,
-    messageCreatedAt,
+    messageCreatedAt: persisted.messageCreatedAt,
     messages,
     needsOption,
     pendingInput: visiblePendingInput,
-    reasoningDurationSeconds,
+    reasoningDurationSeconds: persisted.reasoningDurationSeconds,
     sendMessage,
     sessionLimitReached,
     stop,
-    visiblePendingMessages: [
-      ...visibleStoppedMessages,
-      ...(visiblePendingMessage ? [visiblePendingMessage] : []),
-    ],
+    visiblePendingMessages,
   };
 }

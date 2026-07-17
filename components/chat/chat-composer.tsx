@@ -1,14 +1,14 @@
 import { ArrowUp, Check, ChevronDown, Mic, Plus, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef } from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/lib/chat-store";
-import { getModelOption, MODEL_OPTIONS } from "@/lib/models";
+import { MODEL_OPTIONS } from "@/lib/models";
 
 function ModelSelector() {
   const selectedModelId = useChatStore((state) => state.selectedModel);
   const setSelectedModel = useChatStore((state) => state.setSelectedModel);
-  const selectedModel = getModelOption(selectedModelId);
+  const selectedModel = MODEL_OPTIONS.find((model) => model.value === selectedModelId);
 
   return (
     <div className="ml-auto">
@@ -48,39 +48,6 @@ function ModelSelector() {
   );
 }
 
-type ComposerButtonProps = {
-  readonly disabled: boolean;
-  readonly isGenerating: boolean;
-  readonly onStop: () => void;
-};
-
-function ComposerButton({ disabled, isGenerating, onStop }: ComposerButtonProps) {
-  if (isGenerating) {
-    return (
-      <Button
-        aria-label="Stop generating"
-        className="size-8 rounded-full"
-        onClick={onStop}
-        size="icon-sm"
-      >
-        <Square aria-hidden="true" className="fill-current" />
-      </Button>
-    );
-  }
-
-  return (
-    <Button
-      aria-label="Send message"
-      className="size-8 rounded-full"
-      disabled={disabled}
-      size="icon-sm"
-      type="submit"
-    >
-      <ArrowUp aria-hidden="true" />
-    </Button>
-  );
-}
-
 type ChatComposerProps = {
   readonly disabled?: boolean;
   readonly draftKey: string;
@@ -105,14 +72,6 @@ export function ChatComposer({
   useEffect(() => {
     if (!disabled && !isGenerating && !needsOption) textareaRef.current?.focus();
   }, [disabled, isGenerating, needsOption]);
-
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    textarea.style.height = "0px";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 192)}px`;
-  });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -145,7 +104,7 @@ export function ChatComposer({
         </label>
         <textarea
           autoComplete="off"
-          className="max-h-48 min-h-16 w-full resize-none overflow-y-auto bg-transparent px-2 py-1 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          className="max-h-48 min-h-16 w-full resize-none overflow-y-auto bg-transparent px-2 py-1 outline-none [field-sizing:content] placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
           disabled={disabled || needsOption}
           id="message-input"
           onChange={(event) => setDraft(draftKey, event.target.value)}
@@ -175,7 +134,26 @@ export function ChatComposer({
           >
             <Mic aria-hidden="true" className="size-4" />
           </Button>
-          <ComposerButton disabled={sendDisabled} isGenerating={isGenerating} onStop={onStop} />
+          {isGenerating ? (
+            <Button
+              aria-label="Stop generating"
+              className="size-8 rounded-full"
+              onClick={onStop}
+              size="icon-sm"
+            >
+              <Square aria-hidden="true" className="fill-current" />
+            </Button>
+          ) : (
+            <Button
+              aria-label="Send message"
+              className="size-8 rounded-full"
+              disabled={sendDisabled}
+              size="icon-sm"
+              type="submit"
+            >
+              <ArrowUp aria-hidden="true" />
+            </Button>
+          )}
         </div>
       </form>
       <p className="mx-auto mt-2 max-w-3xl text-center text-sm text-muted-foreground">

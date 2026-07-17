@@ -17,7 +17,6 @@ export function Alert({ className, variant = "default", ...props }: AlertProps) 
   return (
     <div
       className={cn("rounded-md border px-3 py-2", variants[variant], className)}
-      data-slot="alert"
       role="alert"
       {...props}
     />

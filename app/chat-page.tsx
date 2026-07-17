@@ -1,26 +1,15 @@
-import { convexQuery } from "@convex-dev/react-query";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "convex/react";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useLocation, useParams } from "react-router";
 
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatView } from "@/components/chat/chat-view";
-import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
 import type { StoredEveEvent } from "@/lib/eve-events";
 import { toClientContinuationToken } from "@/lib/eve-session";
+import { NotFoundPage } from "./not-found";
 
 const NO_EVENTS: readonly StoredEveEvent[] = [];
-const CHAT_CACHE_TIME_MS = 10 * 60 * 1_000;
-
-function getInitialSession(chat: Doc<"chats">) {
-  return {
-    continuationToken: toClientContinuationToken(chat.continuationToken),
-    sessionId: chat.eveSessionId,
-    streamIndex: chat.streamIndex,
-  };
-}
 
 type ChatHandoff = {
   readonly chatId: string;
@@ -49,35 +38,15 @@ function ChatLoading({ chatId }: { readonly chatId: string }) {
   );
 }
 
-function ChatNotFound() {
-  const navigate = useNavigate();
-
-  return (
-    <main className="flex min-w-0 flex-1 items-center justify-center p-6 text-center">
-      <div>
-        <h1 className="font-medium">Chat not found</h1>
-        <Button className="mt-4" onClick={() => void navigate("/")} variant="outline">
-          Start a new chat
-        </Button>
-      </div>
-    </main>
-  );
-}
-
-export function NewChatPage() {
-  return <ChatView events={NO_EVENTS} title="New chat" />;
-}
-
-function ChatPageContent({ chatId }: { readonly chatId?: string }) {
+export function ChatPage() {
+  const { chatId } = useParams();
   const location = useLocation();
-  const { data: detail } = useQuery({
-    ...convexQuery(api.chats.get, chatId ? { id: chatId } : "skip"),
-    gcTime: CHAT_CACHE_TIME_MS,
-  });
+  const detail = useQuery(api.chats.get, chatId ? { id: chatId } : "skip");
   const handoff = (location.state as { readonly chatHandoff?: ChatHandoff } | null)?.chatHandoff;
   const matchingHandoff = handoff?.chatId === chatId ? handoff : undefined;
 
-  if (!chatId || detail === null) return <ChatNotFound />;
+  if (!chatId) return <ChatView events={NO_EVENTS} title="New chat" />;
+  if (detail === null) return <NotFoundPage title="Chat not found" />;
   if (detail === undefined && !matchingHandoff) return <ChatLoading chatId={chatId} />;
 
   if (!detail) {
@@ -100,15 +69,14 @@ function ChatPageContent({ chatId }: { readonly chatId?: string }) {
       chatId={chatId}
       events={detail.events}
       historyTruncated={detail.historyTruncated}
-      initialSession={getInitialSession(chat)}
+      initialSession={{
+        continuationToken: toClientContinuationToken(chat.continuationToken),
+        sessionId: chat.eveSessionId,
+        streamIndex: chat.streamIndex,
+      }}
       key={chatId}
       sharedStatus={chat.status}
       title={chat.title}
     />
   );
-}
-
-export function ChatPage() {
-  const { chatId } = useParams();
-  return <ChatPageContent chatId={chatId} />;
 }

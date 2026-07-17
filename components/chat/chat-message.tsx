@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { ModelActivity } from "@/components/chat/model-activity";
 import { Button } from "@/components/ui/button";
-import { MessageScrollerAnimatedItem, MessageScrollerItem } from "@/components/ui/message-scroller";
+import { MessageScrollerItem } from "@/components/ui/message-scroller";
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -72,17 +72,15 @@ export function UserMessage({
   readonly id: string;
   readonly text: string;
 }) {
-  const Item = animated ? MessageScrollerAnimatedItem : MessageScrollerItem;
-
   return (
-    <Item messageId={id}>
+    <MessageScrollerItem className={animated ? "message-enter" : undefined} messageId={id}>
       <article aria-label="You" className="group/message flex flex-col items-end py-3">
         <div className="max-w-[85%] rounded-xl bg-muted px-4 py-2 sm:max-w-[75%]">
           <p className="whitespace-pre-wrap">{text}</p>
         </div>
         <MessageActions createdAt={createdAt} text={text} />
       </article>
-    </Item>
+    </MessageScrollerItem>
   );
 }
 

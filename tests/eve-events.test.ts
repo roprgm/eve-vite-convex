@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { projectEveMessages, projectMessageCreatedAt, type StoredEveEvent } from "@/lib/eve-events";
+import { projectEveChat, type StoredEveEvent } from "@/lib/eve-events";
 
 function userEvent(sessionId: string, message: string): StoredEveEvent {
   return {
@@ -13,13 +13,13 @@ function userEvent(sessionId: string, message: string): StoredEveEvent {
   };
 }
 
-describe("projectEveMessages", () => {
+describe("projectEveChat", () => {
   it("renders one user message per persisted event", () => {
-    expect(projectEveMessages([userEvent("run-1", "hi")])).toHaveLength(1);
+    expect(projectEveChat([userEvent("run-1", "hi")]).messages).toHaveLength(1);
   });
 
   it("keeps identical turn IDs from separate eve runs distinct", () => {
-    const messages = projectEveMessages([
+    const { messages } = projectEveChat([
       userEvent("run-1", "first"),
       userEvent("run-2", "second"),
     ]);
@@ -35,6 +35,6 @@ describe("projectMessageCreatedAt", () => {
   it("uses the persisted event time for the projected message", () => {
     const event = { ...userEvent("run-1", "hi"), createdAt: 1_721_234_567_890 };
 
-    expect(projectMessageCreatedAt([event]).get("run-1:turn_0:user")).toBe(event.createdAt);
+    expect(projectEveChat([event]).messageCreatedAt.get("run-1:turn_0:user")).toBe(event.createdAt);
   });
 });

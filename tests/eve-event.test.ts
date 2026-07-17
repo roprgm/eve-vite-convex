@@ -1,6 +1,6 @@
 import type { HandleMessageStreamEvent, MessageCompletedStreamEvent } from "eve/client";
 import { describe, expect, it } from "vitest";
-import { getEventKey, getSessionEventKey, toSerializableEvent } from "@/agent/hooks/persist-chat";
+import { getEventKey, toSerializableEvent } from "@/agent/hooks/persist-chat";
 
 const event: MessageCompletedStreamEvent & {
   readonly meta: { readonly at: string };
@@ -28,10 +28,6 @@ describe("getEventKey", () => {
     } as HandleMessageStreamEvent;
 
     expect(getEventKey(nextStep)).not.toBe(getEventKey(event));
-  });
-
-  it("namespaces coordinates by eve run", () => {
-    expect(getSessionEventKey("run-2", event)).toBe(`run-2:${getEventKey(event)}`);
   });
 });
 

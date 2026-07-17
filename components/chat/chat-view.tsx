@@ -2,7 +2,7 @@ import { useMutation } from "convex/react";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
 import { PanelLeft, Pencil, SquarePen } from "lucide-react";
 import { type KeyboardEvent, lazy, Suspense, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useOutletContext } from "react-router";
 
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { InputRequest } from "@/components/chat/input-request";
@@ -42,25 +42,21 @@ function ChatHeader({
   readonly title: string;
 }) {
   const renameChat = useMutation(api.chats.rename);
-  const [draftTitle, setDraftTitle] = useState(title);
   const [error, setError] = useState<string>();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!isEditing) return;
-    titleInputRef.current?.focus();
+    if (isEditing) titleInputRef.current?.focus();
   }, [isEditing]);
 
   function startEditing(): void {
-    setDraftTitle(title);
     setError(undefined);
     setIsEditing(true);
   }
 
   function cancelEditing(): void {
-    setDraftTitle(title);
     setError(undefined);
     setIsEditing(false);
   }
@@ -68,7 +64,7 @@ function ChatHeader({
   async function saveTitle(): Promise<void> {
     if (!chatId) return;
 
-    const nextTitle = draftTitle.trim();
+    const nextTitle = titleInputRef.current?.value.trim();
     if (!nextTitle) {
       cancelEditing();
       return;
@@ -122,13 +118,12 @@ function ChatHeader({
                 aria-label={`Rename ${title}`}
                 className="min-w-8 max-w-[50vw] bg-transparent p-0 font-medium outline-none [field-sizing:content] aria-invalid:text-destructive"
                 disabled={isSaving}
+                defaultValue={title}
                 maxLength={100}
                 onBlur={() => void saveTitle()}
-                onChange={(event) => setDraftTitle(event.target.value)}
                 onKeyDown={handleTitleKeyDown}
                 ref={titleInputRef}
                 title={error}
-                value={draftTitle}
               />
             </form>
           ) : (
@@ -156,38 +151,6 @@ function ChatHeader({
   );
 }
 
-type ChatSession = ReturnType<typeof useChatSession>;
-
-function ChatNotices({
-  historyTruncated,
-  session,
-}: {
-  readonly historyTruncated?: boolean;
-  readonly session: ChatSession;
-}) {
-  return (
-    <>
-      {session.pendingInput && (
-        <InputRequest
-          disabled={session.isGenerating}
-          onSelect={session.answerQuestion}
-          request={session.pendingInput}
-        />
-      )}
-      {historyTruncated && (
-        <Alert className="my-4 p-4">
-          Showing the latest 1,000 persisted events. Earlier history is hidden in this demo.
-        </Alert>
-      )}
-      {session.error && (
-        <Alert className="my-4 px-4 py-2" variant="destructive">
-          {session.error.message}
-        </Alert>
-      )}
-    </>
-  );
-}
-
 export function ChatView({
   chatId,
   events,
@@ -197,7 +160,7 @@ export function ChatView({
   sharedStatus,
   title,
 }: ChatViewProps) {
-  const openSidebar = useChatStore((state) => state.openSidebar);
+  const { openSidebar } = useOutletContext<{ readonly openSidebar: () => void }>();
   const setDraft = useChatStore((state) => state.setDraft);
   const navigate = useNavigate();
   const session = useChatSession({
@@ -227,7 +190,23 @@ export function ChatView({
           <ChatConversation session={session} />
           {hasNotices && (
             <MessageScrollerItem>
-              <ChatNotices historyTruncated={historyTruncated} session={session} />
+              {session.pendingInput && (
+                <InputRequest
+                  disabled={session.isGenerating}
+                  onSelect={session.answerQuestion}
+                  request={session.pendingInput}
+                />
+              )}
+              {historyTruncated && (
+                <Alert className="my-4 p-4">
+                  Showing the latest 1,000 persisted events. Earlier history is hidden in this demo.
+                </Alert>
+              )}
+              {session.error && (
+                <Alert className="my-4 px-4 py-2" variant="destructive">
+                  {session.error.message}
+                </Alert>
+              )}
             </MessageScrollerItem>
           )}
         </Suspense>
