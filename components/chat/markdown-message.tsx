@@ -12,8 +12,7 @@ const CONTROLS = { table: false } as const;
 export function MarkdownMessage({ isAnimating, text }: MarkdownMessageProps) {
   return (
     <Streamdown
-      animated
-      className="model-response leading-6 [&_li]:py-0"
+      className="model-response space-y-2 leading-6 [&_li]:py-0"
       controls={CONTROLS}
       isAnimating={isAnimating}
     >

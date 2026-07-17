@@ -20,13 +20,24 @@ type PersistEventArgs = {
   eventKey: string;
   eveSessionId: string;
   secret: string;
+  streamAdvance: number;
 };
 
-const persistEvent = makeFunctionReference<"mutation", PersistEventArgs, null>(
+type PendingAppend = {
+  ctx: HookContext;
+  event: HandleMessageStreamEvent;
+  streamAdvance: number;
+  readonly timeout: ReturnType<typeof setTimeout>;
+};
+
+const APPEND_INTERVAL_MS = 1_000;
+const persistEventMutation = makeFunctionReference<"mutation", PersistEventArgs, null>(
   "persistence:persistEvent",
 );
 
 let client: ConvexHttpClient | undefined;
+const pendingAppends = new Map<string, PendingAppend>();
+const persistenceQueues = new Map<string, Promise<void>>();
 
 export function getEventKey(event: HandleMessageStreamEvent): string {
   const data = (event as SequencedEvent).data;
@@ -64,20 +75,62 @@ function getClient(): { client: ConvexHttpClient; secret: string } {
   return { client, secret };
 }
 
-async function persist(event: HandleMessageStreamEvent, ctx: HookContext) {
-  const persistence = getClient();
+function enqueueEvent(event: HandleMessageStreamEvent, ctx: HookContext, streamAdvance = 1) {
+  const sessionId = ctx.session.id;
+  const pending = (persistenceQueues.get(sessionId) ?? Promise.resolve())
+    .then(async () => {
+      const persistence = getClient();
+      await persistence.client.mutation(persistEventMutation, {
+        continuationToken: toClientContinuationToken(ctx.channel.continuationToken),
+        event: toSerializableEvent(event),
+        eventKey: getSessionEventKey(sessionId, event),
+        eveSessionId: sessionId,
+        secret: persistence.secret,
+        streamAdvance,
+      });
+    })
+    .catch((error) => console.error("Could not persist Eve event", error));
 
-  await persistence.client.mutation(persistEvent, {
-    continuationToken: toClientContinuationToken(ctx.channel.continuationToken),
-    event: toSerializableEvent(event),
-    eventKey: getSessionEventKey(ctx.session.id, event),
-    eveSessionId: ctx.session.id,
-    secret: persistence.secret,
+  persistenceQueues.set(sessionId, pending);
+  void pending.finally(() => {
+    if (persistenceQueues.get(sessionId) === pending) persistenceQueues.delete(sessionId);
   });
+
+  return pending;
+}
+
+function flushAppend(sessionId: string): void {
+  const pending = pendingAppends.get(sessionId);
+  if (!pending) return;
+
+  clearTimeout(pending.timeout);
+  pendingAppends.delete(sessionId);
+  enqueueEvent(pending.event, pending.ctx, pending.streamAdvance);
+}
+
+function handleEvent(event: HandleMessageStreamEvent, ctx: HookContext) {
+  const sessionId = ctx.session.id;
+  const isAppend = event.type === "message.appended" || event.type === "reasoning.appended";
+
+  if (!isAppend) {
+    flushAppend(sessionId);
+    return enqueueEvent(event, ctx);
+  }
+
+  const previous = pendingAppends.get(sessionId);
+  if (previous) {
+    previous.ctx = ctx;
+    previous.event = event;
+    previous.streamAdvance += 1;
+    return;
+  }
+
+  const timeout = setTimeout(() => flushAppend(sessionId), APPEND_INTERVAL_MS);
+  pendingAppends.set(sessionId, { ctx, event, streamAdvance: 1, timeout });
 }
 
 export default defineHook({
   events: {
-    "*": persist,
+    "*": handleEvent,
   },
 });

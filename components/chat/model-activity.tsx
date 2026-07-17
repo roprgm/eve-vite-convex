@@ -1,12 +1,19 @@
 import { ChevronRight } from "lucide-react";
 
+import { MarkdownMessage } from "@/components/chat/markdown-message";
+
 type ModelActivityProps = {
   readonly details?: string;
+  readonly isAnimated?: boolean;
   readonly label: string;
 };
 
-export function ModelActivity({ details, label }: ModelActivityProps) {
-  const status = <span className="shimmer text-muted-foreground">{label}</span>;
+export function ModelActivity({ details, isAnimated = true, label }: ModelActivityProps) {
+  const status = (
+    <span className={isAnimated ? "shimmer text-muted-foreground" : "text-muted-foreground"}>
+      {label}
+    </span>
+  );
 
   if (!details) {
     return (
@@ -17,14 +24,14 @@ export function ModelActivity({ details, label }: ModelActivityProps) {
   }
 
   return (
-    <details className="group pb-4">
+    <details className="reasoning-details group pb-2">
       <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-        <ChevronRight aria-hidden="true" className="transition-transform group-open:rotate-90" />
         {status}
+        <ChevronRight aria-hidden="true" className="transition-transform group-open:rotate-90" />
       </summary>
-      <p className="mt-3 ml-5 max-w-3xl whitespace-pre-wrap border-l pl-4 text-muted-foreground">
-        {details}
-      </p>
+      <div className="mt-2 ml-2 max-w-3xl border-l pl-3 text-muted-foreground">
+        <MarkdownMessage isAnimating={false} text={details} />
+      </div>
     </details>
   );
 }
