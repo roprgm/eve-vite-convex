@@ -24,7 +24,7 @@ type PersistEventArgs = {
 };
 
 const persistEvent = makeFunctionReference<"mutation", PersistEventArgs, null>(
-  "messages:persistEvent",
+  "persistence:persistEvent",
 );
 
 let client: ConvexHttpClient | undefined;

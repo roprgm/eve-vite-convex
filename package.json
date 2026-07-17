@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "check": "biome check .",
-    "dev": "concurrently -k -n convex,web -c yellow,cyan \"bun run dev:convex\" \"bun run dev:web\"",
+    "dev": "concurrently -k 'bun:dev:*'",
     "dev:convex": "convex dev",
+    "dev:eve": "eve dev --port 4879 --no-ui",
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",
     "format": "biome format --write .",

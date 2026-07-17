@@ -15,10 +15,9 @@ For a new browser chat, the UI renders the submitted message and live eve stream
 Convex keeps:
 
 - runtime status and the eve continuation cursor;
-- the complete event log needed to rehydrate eve's UI reducer;
-- normalized user and assistant messages for ordinary application queries.
+- the complete event log needed to rehydrate eve's UI reducer.
 
-After the initial turn, the browser renders the event log subscribed from Convex. That durable source keeps messages and `ask_question` requests synchronized across tabs. The frontend never sends assistant messages back to Convex.
+After the initial turn, the browser renders the event log subscribed from Convex. That durable source keeps user messages, assistant messages, and `ask_question` requests synchronized across tabs.
 
 Zustand holds transient client state such as per-chat drafts and open dialogs; Convex remains the source of truth for chats and events.
 
@@ -67,8 +66,6 @@ Prerequisites: Bun, a Convex account, and a Vercel AI Gateway key.
 
    Chat permalinks use `/c/<chat-id>`. Configure production static hosting to rewrite those paths to `app/index.html`.
 
-   The Vite plugin reuses a healthy eve server already running for this project on port 4879. If that process stops, the plugin starts a replacement automatically. Set `EVE_PORT` to override the port.
-
 ## Commands
 
 ```bash
@@ -77,7 +74,7 @@ bun run build        # strict TypeScript check and production frontend build
 bun run test         # focused pure-logic tests
 ```
 
-The local Eve Vite plugin starts the eve development server and proxies `/eve/*` to it on port 4879. The `app/` directory contains the browser entry files so `index.html` stays away from the repository root, where eve could mistake it for a renderer template. Components, utilities, and styles live in their conventional top-level directories.
+The development command starts Convex, eve, and Vite together. Vite proxies `/eve/*` to the local eve server on port 4879. The `app/` directory contains the browser entry files so `index.html` stays away from the repository root, where eve could mistake it for a renderer template. Components, utilities, and styles live in their conventional top-level directories.
 
 ## Production security
 

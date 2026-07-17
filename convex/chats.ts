@@ -42,22 +42,6 @@ export const get = query({
   },
 });
 
-export const archive = mutation({
-  args: { id: v.id("chats") },
-  handler: async (ctx, { id }) => {
-    if (!(await ctx.db.get(id))) throw new ConvexError("Chat not found.");
-    await ctx.db.patch(id, { archivedAt: Date.now() });
-  },
-});
-
-export const restore = mutation({
-  args: { id: v.id("chats") },
-  handler: async (ctx, { id }) => {
-    if (!(await ctx.db.get(id))) throw new ConvexError("Chat not found.");
-    await ctx.db.patch(id, { archivedAt: undefined });
-  },
-});
-
 export const remove = mutation({
   args: { id: v.id("chats") },
   handler: async (ctx, { id }) => {
@@ -75,23 +59,14 @@ export const remove = mutation({
 export const removeData = internalMutation({
   args: { id: v.id("chats") },
   handler: async (ctx, { id }) => {
-    const [events, messages] = await Promise.all([
-      ctx.db
-        .query("events")
-        .withIndex("by_chat", (q) => q.eq("chatId", id))
-        .take(DELETE_BATCH_SIZE),
-      ctx.db
-        .query("messages")
-        .withIndex("by_chat", (q) => q.eq("chatId", id))
-        .take(DELETE_BATCH_SIZE),
-    ]);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_chat", (q) => q.eq("chatId", id))
+      .take(DELETE_BATCH_SIZE);
 
-    await Promise.all([
-      ...events.map((event) => ctx.db.delete(event._id)),
-      ...messages.map((message) => ctx.db.delete(message._id)),
-    ]);
+    await Promise.all(events.map((event) => ctx.db.delete(event._id)));
 
-    if (events.length === DELETE_BATCH_SIZE || messages.length === DELETE_BATCH_SIZE) {
+    if (events.length === DELETE_BATCH_SIZE) {
       await ctx.scheduler.runAfter(0, internal.chats.removeData, { id });
     }
   },

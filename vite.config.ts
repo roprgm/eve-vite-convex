@@ -2,15 +2,21 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import eve from "./lib/vite-plugin-eve";
 
-const evePort = Number(process.env.EVE_PORT ?? 4879);
 const rootDirectory = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   root: "app",
   envDir: "..",
-  plugins: [eve({ port: evePort }), react(), tailwindcss()],
+  plugins: [react(), tailwindcss()],
+  server: {
+    proxy: {
+      "/eve": {
+        changeOrigin: true,
+        target: "http://127.0.0.1:4879",
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": rootDirectory,

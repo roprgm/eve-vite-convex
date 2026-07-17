@@ -1,21 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { advanceChatLifecycle, deriveChatTitle, parseMessageEvent } from "../lib/chat-logic";
-import { mutation, query } from "./_generated/server";
+import { mutation } from "./_generated/server";
 
 function eventTime(event: { meta?: { at: string } }): number {
   const timestamp = event.meta ? Date.parse(event.meta.at) : Number.NaN;
   return Number.isFinite(timestamp) ? timestamp : Date.now();
 }
-
-export const listByChat = query({
-  args: { chatId: v.id("chats") },
-  handler: async (ctx, { chatId }) =>
-    await ctx.db
-      .query("messages")
-      .withIndex("by_chat", (q) => q.eq("chatId", chatId))
-      .order("asc")
-      .collect(),
-});
 
 export const persistEvent = mutation({
   args: {
@@ -83,25 +73,14 @@ export const persistEvent = mutation({
       updatedAt: createdAt,
     });
 
-    if (!parsedEvent?.data.message) return null;
-    if (args.eventType !== "message.received" && args.eventType !== "message.completed") {
+    if (args.eventType !== "message.received") {
       return null;
     }
 
-    const role = args.eventType === "message.received" ? "user" : "assistant";
-    await ctx.db.insert("messages", {
-      chatId,
-      content: parsedEvent.data.message,
-      createdAt,
-      eventKey: args.eventKey,
-      role,
-      sequence: parsedEvent.data.sequence,
-      turnId: parsedEvent.data.turnId,
-    });
+    const message = parsedEvent?.data.message;
+    if (!message || chat.title !== "New chat") return null;
 
-    if (role === "user" && chat.title === "New chat") {
-      await ctx.db.patch(chatId, { title: deriveChatTitle(parsedEvent.data.message) });
-    }
+    await ctx.db.patch(chatId, { title: deriveChatTitle(message) });
 
     return null;
   },

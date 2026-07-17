@@ -1,61 +1,23 @@
-import { useMutation, usePaginatedQuery } from "convex/react";
-import {
-  Archive,
-  ArchiveRestore,
-  CircleAlert,
-  FolderOpen,
-  SquarePen,
-  Trash2,
-  X,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { usePaginatedQuery } from "convex/react";
+import { FolderOpen, SquarePen, Trash2, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { href, Link, useNavigate } from "react-router";
 
-import { ActionMenu, ActionMenuItem } from "@/components/ui/action-menu";
-import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
-import type { Doc, Id } from "@/convex/_generated/dataModel";
+import type { Doc } from "@/convex/_generated/dataModel";
 import { NEW_CHAT_DRAFT, useChatStore } from "@/lib/chat-store";
 import { cn } from "@/lib/cn";
 
-type ChatAction = (id: Id<"chats">) => Promise<void>;
-
 type ChatRowProps = {
   readonly chat: Doc<"chats">;
-  readonly isArchived?: boolean;
   readonly isSelected: boolean;
-  readonly onArchive: ChatAction;
-  readonly onError: (message: string) => void;
-  readonly onRestore: ChatAction;
 };
 
-function ChatRow({
-  chat,
-  isArchived = false,
-  isSelected,
-  onArchive,
-  onError,
-  onRestore,
-}: ChatRowProps) {
+function ChatRow({ chat, isSelected }: ChatRowProps) {
   const closeSidebar = useChatStore((state) => state.closeSidebar);
   const openDelete = useChatStore((state) => state.openDelete);
-  const [isPending, setIsPending] = useState(false);
-  const archiveAction = isArchived ? onRestore : onArchive;
-  const ArchiveActionIcon = isArchived ? ArchiveRestore : Archive;
-  const archiveActionLabel = isArchived ? "Restore" : "Archive";
-
-  async function runArchiveAction(): Promise<void> {
-    setIsPending(true);
-    try {
-      await archiveAction(chat._id);
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not update chat.");
-    } finally {
-      setIsPending(false);
-    }
-  }
 
   return (
     <div
@@ -74,50 +36,17 @@ function ChatRow({
         <span className="block truncate">{chat.title}</span>
       </Link>
 
-      <ActionMenu
-        className="mr-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-        label={`Actions for ${chat.title}`}
-      >
-        <ActionMenuItem disabled={isPending} onClick={() => void runArchiveAction()}>
-          <ArchiveActionIcon aria-hidden="true" />
-          {archiveActionLabel}
-        </ActionMenuItem>
-        <ActionMenuItem
-          disabled={isPending || chat.status === "running"}
-          onClick={() => openDelete({ id: chat._id, title: chat.title })}
-          variant="destructive"
-        >
-          <Trash2 aria-hidden="true" />
-          Delete
-        </ActionMenuItem>
-      </ActionMenu>
-    </div>
-  );
-}
-
-function SidebarAlert({
-  message,
-  onDismiss,
-}: {
-  readonly message?: string;
-  readonly onDismiss: () => void;
-}) {
-  if (!message) return null;
-
-  return (
-    <Alert className="mt-2 flex items-start gap-2" variant="destructive">
-      <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-      <span className="min-w-0 flex-1">{message}</span>
       <Button
-        aria-label="Dismiss error"
-        className="-my-1 -mr-1 text-destructive/70"
-        onClick={onDismiss}
+        aria-label={`Delete ${chat.title}`}
+        className="mr-0.5 text-muted-foreground md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+        disabled={chat.status === "running"}
+        onClick={() => openDelete({ id: chat._id, title: chat.title })}
         size="icon-sm"
         variant="destructive-ghost"
       >
-        <X aria-hidden="true" />
+        <Trash2 aria-hidden="true" />
       </Button>
-    </Alert>
+    </div>
   );
 }
 
@@ -138,16 +67,11 @@ export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: strin
     {},
     { initialNumItems: 50 },
   );
-  const archiveChat = useMutation(api.chats.archive);
-  const restoreChat = useMutation(api.chats.restore);
   const isSidebarOpen = useChatStore((state) => state.isSidebarOpen);
   const closeSidebar = useChatStore((state) => state.closeSidebar);
   const setDraft = useChatStore((state) => state.setDraft);
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [error, setError] = useState<string>();
-  const chats = results.filter((chat) => chat.archivedAt === undefined);
-  const archivedChats = results.filter((chat) => chat.archivedAt !== undefined);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -159,15 +83,6 @@ export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: strin
     closeSidebar();
     setDraft(NEW_CHAT_DRAFT, "");
     void navigate("/");
-  }
-
-  async function archive(id: Id<"chats">): Promise<void> {
-    await archiveChat({ id });
-    if (id === selectedChatId) openNewChat();
-  }
-
-  async function restore(id: Id<"chats">): Promise<void> {
-    await restoreChat({ id });
   }
 
   function renderPanel(isMobile = false) {
@@ -203,43 +118,15 @@ export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: strin
           </div>
         </div>
 
-        <SidebarAlert message={error} onDismiss={() => setError(undefined)} />
-
         <nav
           aria-label="Chats"
           className="mt-4 min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]"
         >
           <p className="px-2 pb-1.5 text-sm font-medium text-muted-foreground">Chats</p>
           {status === "LoadingFirstPage" && <ChatListSkeleton />}
-          {chats.map((chat) => (
-            <ChatRow
-              chat={chat}
-              isSelected={selectedChatId === chat._id}
-              key={chat._id}
-              onArchive={archive}
-              onError={setError}
-              onRestore={restore}
-            />
+          {results.map((chat) => (
+            <ChatRow chat={chat} isSelected={selectedChatId === chat._id} key={chat._id} />
           ))}
-
-          {archivedChats.length > 0 && (
-            <details className="mt-5">
-              <summary className="cursor-pointer px-2 pb-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
-                Archived ({archivedChats.length})
-              </summary>
-              {archivedChats.map((chat) => (
-                <ChatRow
-                  chat={chat}
-                  isArchived
-                  isSelected={selectedChatId === chat._id}
-                  key={chat._id}
-                  onArchive={archive}
-                  onError={setError}
-                  onRestore={restore}
-                />
-              ))}
-            </details>
-          )}
 
           {status === "CanLoadMore" && (
             <Button className="mt-3 w-full" onClick={() => loadMore(50)} size="sm" variant="ghost">
