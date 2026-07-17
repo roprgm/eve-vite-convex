@@ -73,7 +73,7 @@ export function useChatSession({
 
   const userMessageCount = countUserMessages(messages);
   const visibleStoppedMessages = stoppedMessages.filter(
-    (message, index) => userMessageCount <= message.userMessageCount + index,
+    (message) => userMessageCount <= message.userMessageCount,
   );
   let visiblePendingMessage: PendingUserMessage | undefined;
   if (pendingMessage && userMessageCount <= pendingMessage.userMessageCount) {
