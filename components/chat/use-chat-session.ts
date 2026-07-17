@@ -23,6 +23,7 @@ type UseChatSessionOptions = {
 };
 
 type PendingUserMessage = {
+  readonly id: string;
   readonly text: string;
   readonly userMessageCount: number;
 };
@@ -55,7 +56,11 @@ function formatTranscript(messages: readonly EveMessage[], pending: readonly str
     return text ? [`${message.role === "user" ? "User" : "Assistant"}: ${text}`] : [];
   });
 
-  return ["Conversation before the previous run was stopped:", ...lines, ...pending.map((text) => `User: ${text}`)].join("\n\n");
+  return [
+    "Conversation before the previous run was stopped:",
+    ...lines,
+    ...pending.map((text) => `User: ${text}`),
+  ].join("\n\n");
 }
 
 export function useChatSession({
@@ -133,6 +138,7 @@ export function useChatSession({
     }
 
     setPendingMessage({
+      id: crypto.randomUUID(),
       text: message,
       userMessageCount: userMessageCount + visibleStoppedMessages.length,
     });
@@ -178,8 +184,7 @@ export function useChatSession({
     answerQuestion,
     activityLabel,
     error,
-    isEmpty:
-      messages.length === 0 && !visiblePendingMessage && visibleStoppedMessages.length === 0,
+    isEmpty: messages.length === 0 && !visiblePendingMessage && visibleStoppedMessages.length === 0,
     isGenerating: isWorking,
     latestAssistantMessageId: findLatestAssistantMessageId(messages),
     messages,
@@ -187,9 +192,9 @@ export function useChatSession({
     pendingInput,
     sendMessage,
     stop,
-    visiblePendingTexts: [
-      ...visibleStoppedMessages.map(({ text }) => text),
-      ...(visiblePendingMessage ? [visiblePendingMessage.text] : []),
+    visiblePendingMessages: [
+      ...visibleStoppedMessages,
+      ...(visiblePendingMessage ? [visiblePendingMessage] : []),
     ],
   };
 }

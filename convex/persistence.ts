@@ -50,6 +50,7 @@ async function getOrCreateChat(
       sessionStreamIndex: 0,
     };
   }
+  if (resumed) return resumed;
 
   const chatId = await ctx.db.insert("chats", {
     continuationToken: session.continuationToken,
@@ -106,14 +107,22 @@ export const persistEvent = mutation({
       index: chat.streamIndex,
     });
 
+    const isCurrentSession = chat.eveSessionId === args.eveSessionId;
     const lifecycle = advanceChatLifecycle(eventType, chat.revision);
+    const status = chat.resumeAfterStop
+      ? "ready"
+      : isCurrentSession
+        ? lifecycle.status
+        : chat.status;
     await ctx.db.patch(chatId, {
       continuationToken: args.continuationToken,
-      revision: lifecycle.revision,
-      sessionStreamIndex: (chat.sessionStreamIndex ?? chat.streamIndex) + 1,
-      status: lifecycle.status,
+      revision: isCurrentSession ? lifecycle.revision : chat.revision,
+      sessionStreamIndex: isCurrentSession
+        ? (chat.sessionStreamIndex ?? chat.streamIndex) + 1
+        : chat.sessionStreamIndex,
+      status,
       streamIndex: chat.streamIndex + 1,
-      updatedAt: createdAt,
+      updatedAt: isCurrentSession ? createdAt : chat.updatedAt,
     });
 
     if (eventType !== "message.received") {

@@ -24,8 +24,8 @@ export function ChatConversation({ session }: ChatConversationProps) {
           message.id === session.latestAssistantMessageId;
         return <ChatMessage isActive={isActive} key={message.id} message={message} />;
       })}
-      {session.visiblePendingTexts.map((text, index) => (
-        <UserMessage key={`${index}:${text}`} text={text} />
+      {session.visiblePendingMessages.map(({ id, text }) => (
+        <UserMessage key={id} text={text} />
       ))}
       {session.activityLabel && <ModelActivity label={session.activityLabel} />}
     </div>
