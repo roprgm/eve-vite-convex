@@ -49,10 +49,15 @@ export function toSerializableEvent(event: HandleMessageStreamEvent): Value {
 }
 
 function getClient(): { client: ConvexHttpClient; secret: string } {
-  const convexUrl = process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL;
+  const convexUrl = process.env.VITE_CONVEX_URL;
   const secret = process.env.EVE_HOOK_SECRET;
-  if (!convexUrl || !secret) {
-    throw new Error("CONVEX_URL (or VITE_CONVEX_URL) and EVE_HOOK_SECRET are required.");
+
+  if (!convexUrl) {
+    throw new Error("VITE_CONVEX_URL is required.");
+  }
+
+  if (!secret) {
+    throw new Error("EVE_HOOK_SECRET is required.");
   }
 
   client ??= new ConvexHttpClient(convexUrl);
