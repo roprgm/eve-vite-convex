@@ -42,6 +42,23 @@ export const get = query({
   },
 });
 
+export const rename = mutation({
+  args: { id: v.string(), title: v.string() },
+  handler: async (ctx, { id, title }) => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) throw new ConvexError("Chat title cannot be empty.");
+    if (trimmedTitle.length > 100) {
+      throw new ConvexError("Chat title must be 100 characters or fewer.");
+    }
+
+    const chatId = ctx.db.normalizeId("chats", id);
+    const chat = chatId ? await ctx.db.get(chatId) : null;
+    if (!chat) throw new ConvexError("Chat not found.");
+
+    await ctx.db.patch(chat._id, { title: trimmedTitle });
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("chats") },
   handler: async (ctx, { id }) => {

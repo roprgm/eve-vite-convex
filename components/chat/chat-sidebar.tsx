@@ -13,7 +13,7 @@ function EveLogo() {
   return (
     <svg
       aria-hidden="true"
-      className="size-4 shrink-0 text-muted-foreground"
+      className="size-[15px] shrink-0 text-muted-foreground"
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"
@@ -58,7 +58,7 @@ function ChatRow({
       {chat.status === "running" ? (
         <LoaderCircle
           aria-label={`${chat.title} is working`}
-          className="mr-2 size-3.5 animate-spin text-muted-foreground"
+          className="mr-2 animate-spin text-muted-foreground"
         />
       ) : (
         <Button

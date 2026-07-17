@@ -78,6 +78,11 @@
     font-size: var(--text-base);
     line-height: var(--text-base--line-height);
   }
+
+  .lucide {
+    width: 15px;
+    height: 15px;
+  }
 }
 
 .model-response :where(h1, h2, h3, h4, h5, h6) {

@@ -26,7 +26,7 @@ function ComposerButton({ disabled, isGenerating, onStop }: ComposerButtonProps)
         onClick={onStop}
         size="icon-sm"
       >
-        <Square aria-hidden="true" className="size-3! fill-current" />
+        <Square aria-hidden="true" className="fill-current" />
       </Button>
     );
   }
