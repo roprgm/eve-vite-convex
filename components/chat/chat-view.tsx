@@ -1,11 +1,10 @@
 import { useMutation } from "convex/react";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
 import { ArrowDown, PanelLeft, Pencil, SquarePen } from "lucide-react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { ChatComposer } from "@/components/chat/chat-composer";
-import { ChatConversation } from "@/components/chat/chat-conversation";
 import { InputRequest } from "@/components/chat/input-request";
 import { useChatScroll } from "@/components/chat/use-chat-scroll";
 import { useChatSession } from "@/components/chat/use-chat-session";
@@ -15,6 +14,11 @@ import { api } from "@/convex/_generated/api";
 import type { ChatStatus } from "@/lib/chat-logic";
 import { NEW_CHAT_DRAFT, useChatStore } from "@/lib/chat-store";
 import type { StoredEveEvent } from "@/lib/eve-events";
+
+const ChatConversation = lazy(async () => {
+  const module = await import("@/components/chat/chat-conversation");
+  return { default: module.ChatConversation };
+});
 
 type ChatViewProps = {
   readonly chatId?: string;
@@ -204,8 +208,10 @@ function ChatTimeline({
       >
         <div className="min-h-full px-3 sm:px-6">
           <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
-            <ChatConversation session={session} />
-            <ChatNotices historyTruncated={historyTruncated} session={session} />
+            <Suspense fallback={null}>
+              <ChatConversation session={session} />
+              <ChatNotices historyTruncated={historyTruncated} session={session} />
+            </Suspense>
           </div>
         </div>
       </section>

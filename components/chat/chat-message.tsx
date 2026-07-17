@@ -1,14 +1,10 @@
 import type { EveMessage } from "eve/client";
 import { Check, Copy } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
+import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { ModelActivity } from "@/components/chat/model-activity";
 import { Button } from "@/components/ui/button";
-
-const MarkdownMessage = lazy(async () => {
-  const module = await import("@/components/chat/markdown-message");
-  return { default: module.MarkdownMessage };
-});
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -99,9 +95,7 @@ export function ChatMessage({ createdAt, isActive, message }: ChatMessageProps) 
       {reasoning && <ModelActivity details={reasoning} label="Thinking..." />}
       {text && (
         <>
-          <Suspense fallback={null}>
-            <MarkdownMessage isAnimating={isActive} text={text} />
-          </Suspense>
+          <MarkdownMessage isAnimating={isActive} text={text} />
           {!isActive && <MessageActions createdAt={createdAt} text={text} />}
         </>
       )}
