@@ -1,4 +1,5 @@
-import { useQuery } from "convex/react";
+import { convexQuery } from "@convex-dev/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
 import { useLocation, useParams } from "react-router";
 
@@ -41,7 +42,7 @@ function ChatLoading({ chatId }: { readonly chatId: string }) {
 export function ChatPage() {
   const { chatId } = useParams();
   const location = useLocation();
-  const detail = useQuery(api.chats.get, chatId ? { id: chatId } : "skip");
+  const { data: detail } = useQuery(convexQuery(api.chats.get, chatId ? { id: chatId } : "skip"));
   const handoff = (location.state as { readonly chatHandoff?: ChatHandoff } | null)?.chatHandoff;
   const matchingHandoff = handoff?.chatId === chatId ? handoff : undefined;
 
