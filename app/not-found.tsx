@@ -1,0 +1,18 @@
+import { useNavigate } from "react-router";
+
+import { Button } from "@/components/ui/button";
+
+export function NotFoundPage() {
+  const navigate = useNavigate();
+
+  return (
+    <main className="flex min-w-0 flex-1 items-center justify-center p-6 text-center">
+      <div>
+        <h1 className="font-medium">Page not found</h1>
+        <Button className="mt-4" onClick={() => void navigate("/")} variant="outline">
+          Start a new chat
+        </Button>
+      </div>
+    </main>
+  );
+}

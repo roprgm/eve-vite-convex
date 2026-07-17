@@ -1,0 +1,44 @@
+{
+  "name": "eve-vite-convex",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "check": "biome check .",
+    "dev": "concurrently -k -n convex,web -c yellow,cyan \"bun run dev:convex\" \"bun run dev:web\"",
+    "dev:convex": "convex dev",
+    "dev:web": "vite",
+    "build": "tsc --noEmit && vite build",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.2.9",
+    "@tailwindcss/vite": "^4.3.2",
+    "clsx": "^2.1.1",
+    "convex": "^1.42.2",
+    "eve": "^0.24.3",
+    "lucide-react": "^1.24.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router": "^8.2.0",
+    "streamdown": "^2.5.0",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.2",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.4",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^10.0.3",
+    "microsandbox": "^0.6.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  }
+}
