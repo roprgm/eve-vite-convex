@@ -1,5 +1,11 @@
 import type { EveMessage, EveMessageInputRequest } from "eve/client";
 
+const SESSION_LIMIT_REQUEST_MARKER = ":limit:";
+
+export function isSessionLimitRequest(request: EveMessageInputRequest | undefined): boolean {
+  return request?.requestId.includes(SESSION_LIMIT_REQUEST_MARKER) ?? false;
+}
+
 export function findPendingInput(
   messages: readonly EveMessage[],
 ): EveMessageInputRequest | undefined {

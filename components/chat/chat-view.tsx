@@ -176,7 +176,7 @@ function ChatNotices({
         </Alert>
       )}
       {session.error && (
-        <Alert className="my-4 p-4" variant="destructive">
+        <Alert className="my-4 px-4 py-2" variant="destructive">
           {session.error.message}
         </Alert>
       )}
@@ -262,6 +262,7 @@ export function ChatView({
       />
       <ChatTimeline historyTruncated={historyTruncated} scroll={scroll} session={session} />
       <ChatComposer
+        disabled={session.sessionLimitReached}
         draftKey={chatId ?? NEW_CHAT_DRAFT}
         isGenerating={session.isGenerating}
         needsOption={session.needsOption}

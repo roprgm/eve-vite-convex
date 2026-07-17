@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { href, useNavigate } from "react-router";
 
 import { api } from "@/convex/_generated/api";
-import type { ChatStatus } from "@/lib/chat-logic";
+import { type ChatStatus, getActivityLabel } from "@/lib/chat-logic";
 import {
   countUserMessages,
   findLatestAssistantMessageId,
@@ -16,7 +16,7 @@ import {
   projectMessageCreatedAt,
   type StoredEveEvent,
 } from "@/lib/eve-events";
-import { findPendingInput } from "@/lib/pending-input";
+import { findPendingInput, isSessionLimitRequest } from "@/lib/pending-input";
 
 type UseChatSessionOptions = {
   readonly chatId?: string;
@@ -32,23 +32,16 @@ type PendingUserMessage = {
   readonly userMessageCount: number;
 };
 
-type ActivityState = {
-  readonly blocked: boolean;
-  readonly working: boolean;
-};
-
 const PERSISTED_CHAT_ERROR = new Error(
   "This chat stopped unexpectedly. Send another message to try again.",
+);
+const SESSION_TOKEN_LIMIT_ERROR = new Error(
+  "This chat has reached its token limit. Start a new chat to continue.",
 );
 
 function asError(error: unknown, fallback: string): Error {
   if (error instanceof Error) return error;
   return new Error(fallback);
-}
-
-function getActivityLabel({ blocked, working }: ActivityState): string | undefined {
-  if (!working || blocked) return undefined;
-  return "Thinking...";
 }
 
 export function useChatSession({
@@ -86,18 +79,25 @@ export function useChatSession({
     visiblePendingMessage = pendingMessage;
   }
   const pendingInput = findPendingInput(messages);
-  const needsOption = Boolean(pendingInput?.options?.length && !pendingInput.allowFreeform);
+  const sessionLimitReached = isSessionLimitRequest(pendingInput);
+  const visiblePendingInput = sessionLimitReached ? undefined : pendingInput;
+  const needsOption = Boolean(
+    visiblePendingInput?.options?.length && !visiblePendingInput.allowFreeform,
+  );
   const assistantTextHasStarted =
     !visiblePendingMessage && hasAssistantTextAfterLatestUser(messages);
   const isGenerating = sharedStatus === "running" || isAgentBusy;
   const isWorking = isGenerating || Boolean(visiblePendingMessage);
-  const activityLabel = getActivityLabel({
-    blocked: Boolean(pendingInput) || assistantTextHasStarted,
-    working: isWorking,
-  });
   let persistedError: Error | undefined;
   if (sharedStatus === "error" && !isAgentBusy) persistedError = PERSISTED_CHAT_ERROR;
-  const error = localError ?? agent.error ?? persistedError;
+  const error = sessionLimitReached
+    ? SESSION_TOKEN_LIMIT_ERROR
+    : (localError ?? agent.error ?? persistedError);
+  const activityLabel = getActivityLabel({
+    blocked: Boolean(pendingInput) || assistantTextHasStarted,
+    failed: Boolean(error),
+    working: isWorking,
+  });
 
   useEffect(() => {
     if (pendingMessage && assistantTextHasStarted) setPendingMessage(undefined);
@@ -157,13 +157,14 @@ export function useChatSession({
     activityLabel,
     error,
     isEmpty: messages.length === 0 && !visiblePendingMessage && visibleStoppedMessages.length === 0,
-    isGenerating: isWorking,
+    isGenerating: isWorking && !error,
     latestAssistantMessageId: findLatestAssistantMessageId(messages),
     messageCreatedAt,
     messages,
     needsOption,
-    pendingInput,
+    pendingInput: visiblePendingInput,
     sendMessage,
+    sessionLimitReached,
     stop,
     visiblePendingMessages: [
       ...visibleStoppedMessages,

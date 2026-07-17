@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   advanceChatLifecycle,
   deriveChatTitle,
+  getActivityLabel,
   parseEventType,
   parseMessageEvent,
 } from "@/lib/chat-logic";
@@ -41,6 +42,16 @@ describe("advanceChatLifecycle", () => {
       revision: 3,
       status: "ready",
     });
+  });
+});
+
+describe("getActivityLabel", () => {
+  it("hides terminal activity when a request fails", () => {
+    expect(getActivityLabel({ blocked: false, failed: true, working: true })).toBeUndefined();
+  });
+
+  it("shows activity while an unblocked request is working", () => {
+    expect(getActivityLabel({ blocked: false, failed: false, working: true })).toBe("Thinking...");
   });
 });
 

@@ -7,6 +7,12 @@ export type ChatLifecycle = {
   readonly status: ChatStatus;
 };
 
+type ActivityState = {
+  readonly blocked: boolean;
+  readonly failed: boolean;
+  readonly working: boolean;
+};
+
 export type PersistedMessageEvent = {
   data: {
     message: string | null;
@@ -54,6 +60,11 @@ export function advanceChatLifecycle(eventType: string, revision: number): ChatL
   }
 
   return { revision, status: "running" };
+}
+
+export function getActivityLabel({ blocked, failed, working }: ActivityState): string | undefined {
+  if (!working || blocked || failed) return undefined;
+  return "Thinking...";
 }
 
 export function parseMessageEvent(value: unknown): PersistedMessageEvent | null {
