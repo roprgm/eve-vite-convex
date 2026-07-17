@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "web": {
+      "root": ".",
+      "framework": "vite",
+      "devCommand": "vite"
+    },
+    "eve": {
+      "root": ".",
+      "framework": "eve",
+      "buildCommand": "eve build"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/eve/(.*)",
+      "destination": { "service": "eve" }
+    },
+    {
+      "source": "/(.*)",
+      "destination": { "service": "web" }
+    }
+  ]
+}
