@@ -98,6 +98,28 @@
   line-height: inherit;
 }
 
+.reasoning-details {
+  interpolate-size: allow-keywords;
+}
+
+.reasoning-details::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size 180ms ease,
+    content-visibility 180ms allow-discrete;
+}
+
+.reasoning-details[open]::details-content {
+  block-size: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-details::details-content {
+    transition: none;
+  }
+}
+
 [data-streamdown="table-wrapper"] {
   margin-block: 0.75rem;
   overflow: hidden;

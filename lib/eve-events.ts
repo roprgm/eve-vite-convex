@@ -5,10 +5,19 @@ export type StoredEveEvent = {
   readonly event: unknown;
   readonly eventKey: string;
   readonly eveSessionId: string;
+  readonly index?: number;
 };
 
 function isEveEvent(value: unknown): value is HandleMessageStreamEvent {
   return typeof value === "object" && value !== null && "type" in value;
+}
+
+function getStoredEventTime(storedEvent: StoredEveEvent): number | undefined {
+  const event = storedEvent.event;
+  const eventTime = isEveEvent(event) && "meta" in event ? event.meta?.at : undefined;
+  const createdAt = storedEvent.createdAt ?? (eventTime ? Date.parse(eventTime) : undefined);
+  if (createdAt === undefined || !Number.isFinite(createdAt)) return undefined;
+  return createdAt;
 }
 
 function namespaceTurn(
@@ -24,35 +33,37 @@ function namespaceTurn(
   } as HandleMessageStreamEvent;
 }
 
-export function createEveMessageProjector() {
-  const reducer = defaultMessageReducer();
-  let data = reducer.initial();
-  let eventKeys: string[] = [];
+export function projectEveEvents(events: readonly StoredEveEvent[]): HandleMessageStreamEvent[] {
+  const projectedEvents: HandleMessageStreamEvent[] = [];
 
-  return (events: readonly StoredEveEvent[]): EveMessage[] => {
-    const appendOnly =
-      eventKeys.length <= events.length &&
-      eventKeys.every((key, index) => events[index]?.eventKey === key);
-    if (!appendOnly) {
-      data = reducer.initial();
-      eventKeys = [];
-    }
+  for (const storedEvent of events) {
+    if (!isEveEvent(storedEvent.event)) continue;
+    projectedEvents.push(namespaceTurn(storedEvent.event, storedEvent.eveSessionId));
+  }
 
-    for (let index = eventKeys.length; index < events.length; index += 1) {
-      const storedEvent = events[index];
-      if (!storedEvent) continue;
-      eventKeys.push(storedEvent.eventKey);
-      if (isEveEvent(storedEvent.event)) {
-        data = reducer.reduce(data, namespaceTurn(storedEvent.event, storedEvent.eveSessionId));
-      }
-    }
-
-    return [...data.messages];
-  };
+  return projectedEvents;
 }
 
 export function projectEveMessages(events: readonly StoredEveEvent[]): EveMessage[] {
-  return createEveMessageProjector()(events);
+  const reducer = defaultMessageReducer();
+  const data = projectEveEvents(events).reduce(reducer.reduce, reducer.initial());
+  return [...data.messages];
+}
+
+export function namespaceEveMessages(
+  messages: readonly EveMessage[],
+  sessionId: string | undefined,
+  events: readonly StoredEveEvent[],
+): readonly EveMessage[] {
+  if (!sessionId) return messages;
+
+  const sessionPrefixes = [...new Set(events.map((event) => `${event.eveSessionId}:`))];
+  sessionPrefixes.push(`${sessionId}:`);
+
+  return messages.map((message) => {
+    const isNamespaced = sessionPrefixes.some((prefix) => message.id.startsWith(prefix));
+    return isNamespaced ? message : { ...message, id: `${sessionId}:${message.id}` };
+  });
 }
 
 export function projectMessageCreatedAt(
@@ -67,10 +78,8 @@ export function projectMessageCreatedAt(
     if (!data || typeof data !== "object" || !("turnId" in data)) continue;
     if (typeof data.turnId !== "string") continue;
 
-    const eventTime = "meta" in storedEvent.event ? storedEvent.event.meta?.at : undefined;
-    const parsedEventTime = eventTime ? Date.parse(eventTime) : Number.NaN;
-    const createdAt = storedEvent.createdAt ?? parsedEventTime;
-    if (!Number.isFinite(createdAt)) continue;
+    const createdAt = getStoredEventTime(storedEvent);
+    if (createdAt === undefined) continue;
 
     const role = type === "message.received" ? "user" : "assistant";
     const messageId = `${storedEvent.eveSessionId}:${data.turnId}:${role}`;
@@ -78,4 +87,34 @@ export function projectMessageCreatedAt(
   }
 
   return createdAtByMessageId;
+}
+
+export function projectReasoningDurationSeconds(
+  events: readonly StoredEveEvent[],
+): ReadonlyMap<string, number> {
+  const startedAt = new Map<string, number>();
+  const durations = new Map<string, number>();
+
+  for (const storedEvent of events) {
+    const event = storedEvent.event;
+    if (!isEveEvent(event)) continue;
+    if (event.type !== "reasoning.appended" && event.type !== "reasoning.completed") {
+      continue;
+    }
+
+    const createdAt = getStoredEventTime(storedEvent);
+    if (createdAt === undefined) continue;
+
+    const messageId = `${storedEvent.eveSessionId}:${event.data.turnId}:assistant`;
+    if (event.type === "reasoning.appended") {
+      if (!startedAt.has(messageId)) startedAt.set(messageId, createdAt);
+      continue;
+    }
+
+    const started = startedAt.get(messageId);
+    if (started === undefined) continue;
+    durations.set(messageId, Math.max(1, Math.round((createdAt - started) / 1_000)));
+  }
+
+  return durations;
 }

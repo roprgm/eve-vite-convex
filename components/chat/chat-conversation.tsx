@@ -1,40 +1,40 @@
 import { ChatMessage, UserMessage } from "@/components/chat/chat-message";
 import { ModelActivity } from "@/components/chat/model-activity";
 import type { useChatSession } from "@/components/chat/use-chat-session";
+import { MessageScrollerItem } from "@/components/ui/message-scroller";
 
 type ChatConversationProps = {
   readonly session: ReturnType<typeof useChatSession>;
 };
 
 export function ChatConversation({ session }: ChatConversationProps) {
-  if (session.isEmpty && !session.activityLabel) {
+  if (session.isEmpty) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center text-center">
+      <MessageScrollerItem className="absolute inset-0 flex max-w-none items-center justify-center text-center">
         <h2 className="text-2xl font-medium tracking-tight">What can I help with?</h2>
-      </div>
+      </MessageScrollerItem>
     );
   }
 
   return (
-    <div aria-live="polite" className="py-5" role="log">
-      {session.messages.map((message) => {
-        const isActive =
-          session.isGenerating &&
-          message.role === "assistant" &&
-          message.id === session.latestAssistantMessageId;
-        return (
-          <ChatMessage
-            createdAt={session.messageCreatedAt.get(message.id)}
-            isActive={isActive}
-            key={message.id}
-            message={message}
-          />
-        );
-      })}
-      {session.visiblePendingMessages.map(({ createdAt, id, text }) => (
-        <UserMessage createdAt={createdAt} key={id} text={text} />
+    <>
+      {session.messages.map((message) => (
+        <ChatMessage
+          createdAt={session.messageCreatedAt.get(message.id)}
+          isActive={session.isGenerating && message.metadata?.status === "streaming"}
+          key={message.id}
+          message={message}
+          reasoningSeconds={session.reasoningDurationSeconds.get(message.id)}
+        />
       ))}
-      {session.activityLabel && <ModelActivity label={session.activityLabel} />}
-    </div>
+      {session.visiblePendingMessages.map(({ createdAt, id, text }) => (
+        <UserMessage animated createdAt={createdAt} id={id} key={id} text={text} />
+      ))}
+      {session.activityLabel && (
+        <MessageScrollerItem>
+          <ModelActivity label={session.activityLabel} />
+        </MessageScrollerItem>
+      )}
+    </>
   );
 }

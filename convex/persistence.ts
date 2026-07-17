@@ -51,6 +51,7 @@ export const persistEvent = mutation({
     eventKey: v.string(),
     eveSessionId: v.string(),
     secret: v.string(),
+    streamAdvance: v.number(),
   },
   handler: async (ctx, args) => {
     if (!process.env.EVE_HOOK_SECRET || args.secret !== process.env.EVE_HOOK_SECRET) {
@@ -80,7 +81,7 @@ export const persistEvent = mutation({
       eveSessionId: args.eveSessionId,
       event: args.event,
       eventKey: args.eventKey,
-      index: chat.streamIndex,
+      index: chat.streamIndex + args.streamAdvance - 1,
     });
 
     const lifecycle = advanceChatLifecycle(eventType, chat.revision);
@@ -88,7 +89,7 @@ export const persistEvent = mutation({
       continuationToken: args.continuationToken,
       revision: lifecycle.revision,
       status: lifecycle.status,
-      streamIndex: chat.streamIndex + 1,
+      streamIndex: chat.streamIndex + args.streamAdvance,
       updatedAt: createdAt,
     });
 
