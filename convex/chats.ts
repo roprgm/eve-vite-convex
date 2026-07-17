@@ -42,19 +42,20 @@ export const get = query({
   },
 });
 
-export const archive = mutation({
-  args: { id: v.id("chats") },
-  handler: async (ctx, { id }) => {
-    if (!(await ctx.db.get(id))) throw new ConvexError("Chat not found.");
-    await ctx.db.patch(id, { archivedAt: Date.now() });
-  },
-});
+export const rename = mutation({
+  args: { id: v.string(), title: v.string() },
+  handler: async (ctx, { id, title }) => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) throw new ConvexError("Chat title cannot be empty.");
+    if (trimmedTitle.length > 100) {
+      throw new ConvexError("Chat title must be 100 characters or fewer.");
+    }
 
-export const restore = mutation({
-  args: { id: v.id("chats") },
-  handler: async (ctx, { id }) => {
-    if (!(await ctx.db.get(id))) throw new ConvexError("Chat not found.");
-    await ctx.db.patch(id, { archivedAt: undefined });
+    const chatId = ctx.db.normalizeId("chats", id);
+    const chat = chatId ? await ctx.db.get(chatId) : null;
+    if (!chat) throw new ConvexError("Chat not found.");
+
+    await ctx.db.patch(chat._id, { title: trimmedTitle });
   },
 });
 
@@ -75,23 +76,14 @@ export const remove = mutation({
 export const removeData = internalMutation({
   args: { id: v.id("chats") },
   handler: async (ctx, { id }) => {
-    const [events, messages] = await Promise.all([
-      ctx.db
-        .query("events")
-        .withIndex("by_chat", (q) => q.eq("chatId", id))
-        .take(DELETE_BATCH_SIZE),
-      ctx.db
-        .query("messages")
-        .withIndex("by_chat", (q) => q.eq("chatId", id))
-        .take(DELETE_BATCH_SIZE),
-    ]);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_chat", (q) => q.eq("chatId", id))
+      .take(DELETE_BATCH_SIZE);
 
-    await Promise.all([
-      ...events.map((event) => ctx.db.delete(event._id)),
-      ...messages.map((message) => ctx.db.delete(message._id)),
-    ]);
+    await Promise.all(events.map((event) => ctx.db.delete(event._id)));
 
-    if (events.length === DELETE_BATCH_SIZE || messages.length === DELETE_BATCH_SIZE) {
+    if (events.length === DELETE_BATCH_SIZE) {
       await ctx.scheduler.runAfter(0, internal.chats.removeData, { id });
     }
   },

@@ -66,13 +66,8 @@ export function DeleteChatDialog() {
           <Button autoFocus disabled={isPending} onClick={closeDelete} variant="outline">
             Cancel
           </Button>
-          <Button
-            aria-label={isPending ? "Deleting chat" : undefined}
-            disabled={isPending}
-            onClick={() => void confirmDelete()}
-            variant="destructive"
-          >
-            <span className={isPending ? "invisible" : undefined}>Delete</span>
+          <Button disabled={isPending} onClick={() => void confirmDelete()} variant="destructive">
+            Delete
           </Button>
         </div>
       </div>

@@ -8,6 +8,11 @@ type InputRequestProps = {
   readonly request: EveMessageInputRequest;
 };
 
+function getOptionVariant(style: string | undefined): "default" | "outline" {
+  if (style === "primary") return "default";
+  return "outline";
+}
+
 export function InputRequest({ disabled, onSelect, request }: InputRequestProps) {
   const options = request.options ?? [];
 
@@ -22,7 +27,7 @@ export function InputRequest({ disabled, onSelect, request }: InputRequestProps)
               key={option.id}
               onClick={() => onSelect(option.id)}
               size="sm"
-              variant={option.style === "primary" ? "default" : "outline"}
+              variant={getOptionVariant(option.style)}
             >
               {option.label}
             </Button>

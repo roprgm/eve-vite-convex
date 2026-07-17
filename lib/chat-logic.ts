@@ -21,6 +21,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+export function parseEventType(value: unknown): string | null {
+  if (!isRecord(value) || typeof value.type !== "string") return null;
+  return value.type;
+}
+
 export function deriveChatTitle(message: string): string {
   const normalized = message.replace(/\s+/g, " ").trim();
 
@@ -42,6 +47,7 @@ export function advanceChatLifecycle(eventType: string, revision: number): ChatL
   if (
     eventType === "session.completed" ||
     eventType === "session.waiting" ||
+    eventType === "turn.cancelled" ||
     eventType === "turn.completed"
   ) {
     return { revision: revision + 1, status: "ready" };
@@ -51,9 +57,10 @@ export function advanceChatLifecycle(eventType: string, revision: number): ChatL
 }
 
 export function parseMessageEvent(value: unknown): PersistedMessageEvent | null {
-  if (!isRecord(value) || !isRecord(value.data) || typeof value.type !== "string") {
-    return null;
-  }
+  if (!isRecord(value) || !isRecord(value.data)) return null;
+
+  const eventType = parseEventType(value);
+  if (!eventType) return null;
 
   const { data } = value;
   if (
@@ -74,6 +81,6 @@ export function parseMessageEvent(value: unknown): PersistedMessageEvent | null 
       turnId: data.turnId,
     },
     ...(meta ? { meta } : {}),
-    type: value.type,
+    type: eventType,
   };
 }

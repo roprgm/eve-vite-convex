@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import type { SessionState } from "eve/client";
+import { Client, type EveMessage, type SessionState } from "eve/client";
 import { useEveAgent } from "eve/react";
 import { useEffect, useMemo, useState } from "react";
 import { href, useNavigate } from "react-router";
@@ -21,7 +21,8 @@ type UseChatSessionOptions = {
   readonly sharedStatus?: ChatStatus;
 };
 
-type OptimisticUserMessage = {
+type PendingUserMessage = {
+  readonly id: string;
   readonly text: string;
   readonly userMessageCount: number;
 };
@@ -36,7 +37,8 @@ const PERSISTED_CHAT_ERROR = new Error(
 );
 
 function asError(error: unknown, fallback: string): Error {
-  return error instanceof Error ? error : new Error(fallback);
+  if (error instanceof Error) return error;
+  return new Error(fallback);
 }
 
 function getActivityLabel({ blocked, working }: ActivityState): string | undefined {
@@ -52,50 +54,53 @@ export function useChatSession({
 }: UseChatSessionOptions) {
   const navigate = useNavigate();
   const [localError, setLocalError] = useState<Error>();
-  const [optimisticMessage, setOptimisticMessage] = useState<OptimisticUserMessage>();
-  const agent = useEveAgent({
-    initialSession,
-    optimistic: false,
-  });
-  const startedSessionId = agent.session.sessionId;
-  const startedChatId = useQuery(
-    api.chats.getByEveSession,
-    !chatId && startedSessionId ? { sessionId: startedSessionId } : "skip",
-  );
-  const startedChat = useQuery(api.chats.get, startedChatId ? { id: startedChatId } : "skip");
+  const [pendingMessage, setPendingMessage] = useState<PendingUserMessage>();
+  const [stoppedMessages, setStoppedMessages] = useState<readonly PendingUserMessage[]>([]);
+  const [clientSession] = useState(() => new Client({ host: "" }).session(initialSession));
+  const agent = useEveAgent({ optimistic: false, session: clientSession });
+  const isAgentBusy = agent.status === "submitted" || agent.status === "streaming";
+
+  let startedChatQuery: { sessionId: string } | "skip" = "skip";
+  if (!chatId && agent.session.sessionId) {
+    startedChatQuery = { sessionId: agent.session.sessionId };
+  }
+  const startedChatId = useQuery(api.chats.getByEveSession, startedChatQuery);
+
   const projectMessages = useMemo(createEveMessageProjector, []);
   const persistedMessages = useMemo(() => projectMessages(events), [events, projectMessages]);
-  const messages = chatId ? persistedMessages : agent.data.messages;
+  let messages: readonly EveMessage[] = agent.data.messages;
+  if (chatId) messages = persistedMessages;
+
   const userMessageCount = countUserMessages(messages);
-  const visibleOptimisticMessage =
-    optimisticMessage && userMessageCount <= optimisticMessage.userMessageCount
-      ? optimisticMessage
-      : undefined;
+  const visibleStoppedMessages = stoppedMessages.filter(
+    (message) => userMessageCount <= message.userMessageCount,
+  );
+  let visiblePendingMessage: PendingUserMessage | undefined;
+  if (pendingMessage && userMessageCount <= pendingMessage.userMessageCount) {
+    visiblePendingMessage = pendingMessage;
+  }
   const pendingInput = findPendingInput(messages);
   const needsOption = Boolean(pendingInput?.options?.length && !pendingInput.allowFreeform);
   const assistantTextHasStarted =
-    !visibleOptimisticMessage && hasAssistantTextAfterLatestUser(messages);
-  const isAgentBusy = agent.status === "submitted" || agent.status === "streaming";
+    !visiblePendingMessage && hasAssistantTextAfterLatestUser(messages);
+  const isGenerating = sharedStatus === "running" || isAgentBusy;
+  const isWorking = isGenerating || Boolean(visiblePendingMessage);
   const activityLabel = getActivityLabel({
     blocked: Boolean(pendingInput) || assistantTextHasStarted,
-    working: isAgentBusy || sharedStatus === "running" || Boolean(optimisticMessage),
+    working: isWorking,
   });
-  const latestAssistantMessageId = findLatestAssistantMessageId(messages);
-  const isBusy = sharedStatus === "running" || isAgentBusy;
-  const persistedError =
-    sharedStatus === "error" && !isAgentBusy ? PERSISTED_CHAT_ERROR : undefined;
+  let persistedError: Error | undefined;
+  if (sharedStatus === "error" && !isAgentBusy) persistedError = PERSISTED_CHAT_ERROR;
   const error = localError ?? agent.error ?? persistedError;
 
   useEffect(() => {
-    if (optimisticMessage && assistantTextHasStarted) {
-      setOptimisticMessage(undefined);
-    }
-  }, [assistantTextHasStarted, optimisticMessage]);
+    if (pendingMessage && assistantTextHasStarted) setPendingMessage(undefined);
+  }, [assistantTextHasStarted, pendingMessage]);
 
   useEffect(() => {
-    if (chatId || isAgentBusy || !startedChatId || !startedChat) return;
+    if (chatId || isAgentBusy || !startedChatId) return;
     void navigate(href("/c/:chatId", { chatId: startedChatId }), { replace: true });
-  }, [chatId, isAgentBusy, navigate, startedChat, startedChatId]);
+  }, [chatId, isAgentBusy, navigate, startedChatId]);
 
   async function send(input: Parameters<typeof agent.send>[0]): Promise<boolean> {
     setLocalError(undefined);
@@ -103,42 +108,58 @@ export function useChatSession({
       await agent.send(input);
       return true;
     } catch (error) {
-      setOptimisticMessage(undefined);
+      setPendingMessage(undefined);
       setLocalError(asError(error, "Could not send message."));
       return false;
     }
   }
 
   async function sendMessage(message: string): Promise<boolean> {
-    if (!chatId) {
-      setOptimisticMessage({ text: message, userMessageCount });
-      return send({ message });
-    }
-    if (pendingInput) {
+    if (chatId && pendingInput) {
       return send({ inputResponses: [{ requestId: pendingInput.requestId, text: message }] });
     }
-    setOptimisticMessage({ text: message, userMessageCount });
+
+    setPendingMessage({
+      id: crypto.randomUUID(),
+      text: message,
+      userMessageCount: userMessageCount + visibleStoppedMessages.length,
+    });
     return send({ message });
   }
 
   function answerQuestion(optionId: string): void {
-    if (!pendingInput || isBusy) return;
+    if (!pendingInput || isGenerating) return;
     void send({ inputResponses: [{ requestId: pendingInput.requestId, optionId }] });
+  }
+
+  async function stop(): Promise<void> {
+    agent.stop();
+    if (visiblePendingMessage) {
+      setStoppedMessages((messages) => [...messages, visiblePendingMessage]);
+      setPendingMessage(undefined);
+    }
+    try {
+      await clientSession.cancel();
+    } catch (error) {
+      setLocalError(asError(error, "Could not stop this chat."));
+    }
   }
 
   return {
     answerQuestion,
     activityLabel,
     error,
-    isBusy,
-    isEmpty: messages.length === 0 && !visibleOptimisticMessage,
-    isStreaming: isAgentBusy || sharedStatus === "running",
-    latestAssistantMessageId,
+    isEmpty: messages.length === 0 && !visiblePendingMessage && visibleStoppedMessages.length === 0,
+    isGenerating: isWorking,
+    latestAssistantMessageId: findLatestAssistantMessageId(messages),
     messages,
     needsOption,
     pendingInput,
     sendMessage,
-    stop: agent.stop,
-    visibleOptimisticText: visibleOptimisticMessage?.text,
+    stop,
+    visiblePendingMessages: [
+      ...visibleStoppedMessages,
+      ...(visiblePendingMessage ? [visiblePendingMessage] : []),
+    ],
   };
 }

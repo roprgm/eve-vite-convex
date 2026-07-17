@@ -19,10 +19,7 @@ export function ModelActivity({ details, label }: ModelActivityProps) {
   return (
     <details className="group pb-4">
       <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-        <ChevronRight
-          aria-hidden="true"
-          className="size-3.5 transition-transform group-open:rotate-90"
-        />
+        <ChevronRight aria-hidden="true" className="transition-transform group-open:rotate-90" />
         {status}
       </summary>
       <p className="mt-3 ml-5 max-w-3xl whitespace-pre-wrap border-l pl-4 text-muted-foreground">

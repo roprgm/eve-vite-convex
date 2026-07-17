@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceChatLifecycle, deriveChatTitle, parseMessageEvent } from "@/lib/chat-logic";
+import {
+  advanceChatLifecycle,
+  deriveChatTitle,
+  parseEventType,
+  parseMessageEvent,
+} from "@/lib/chat-logic";
+
+describe("parseEventType", () => {
+  it("reads the event type from the persisted event", () => {
+    expect(parseEventType({ type: "turn.completed" })).toBe("turn.completed");
+    expect(parseEventType({ type: 42 })).toBeNull();
+  });
+});
 
 describe("advanceChatLifecycle", () => {
   it("marks active events as running without advancing the revision", () => {
@@ -19,6 +31,13 @@ describe("advanceChatLifecycle", () => {
 
   it("finishes when Eve omits a session boundary", () => {
     expect(advanceChatLifecycle("turn.completed", 2)).toEqual({
+      revision: 3,
+      status: "ready",
+    });
+  });
+
+  it("becomes ready when a turn is cancelled", () => {
+    expect(advanceChatLifecycle("turn.cancelled", 2)).toEqual({
       revision: 3,
       status: "ready",
     });

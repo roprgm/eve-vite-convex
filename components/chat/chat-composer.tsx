@@ -1,17 +1,24 @@
 import { ArrowUp, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/lib/chat-store";
 
 type ComposerButtonProps = {
   readonly disabled: boolean;
-  readonly isStreaming: boolean;
+  readonly isGenerating: boolean;
   readonly onStop: () => void;
 };
 
-function ComposerButton({ disabled, isStreaming, onStop }: ComposerButtonProps) {
-  if (isStreaming) {
+function ComposerButton({ disabled, isGenerating, onStop }: ComposerButtonProps) {
+  if (isGenerating) {
     return (
       <Button
         aria-label="Stop generating"
@@ -19,7 +26,7 @@ function ComposerButton({ disabled, isStreaming, onStop }: ComposerButtonProps) 
         onClick={onStop}
         size="icon-sm"
       >
-        <Square aria-hidden="true" className="size-3! fill-current" />
+        <Square aria-hidden="true" className="fill-current" />
       </Button>
     );
   }
@@ -38,18 +45,29 @@ function ComposerButton({ disabled, isStreaming, onStop }: ComposerButtonProps) 
 }
 
 type ChatComposerProps = {
+  readonly disabled?: boolean;
   readonly draftKey: string;
-  readonly isBusy: boolean;
-  readonly isStreaming: boolean;
+  readonly isGenerating: boolean;
   readonly needsOption: boolean;
   readonly onSend: (message: string) => Promise<boolean>;
   readonly onStop: () => void;
 };
 
+function useComposerFocus(
+  disabled: boolean,
+  isGenerating: boolean,
+  needsOption: boolean,
+  textareaRef: RefObject<HTMLTextAreaElement | null>,
+): void {
+  useEffect(() => {
+    if (!disabled && !isGenerating && !needsOption) textareaRef.current?.focus();
+  }, [disabled, isGenerating, needsOption, textareaRef]);
+}
+
 export function ChatComposer({
+  disabled = false,
   draftKey,
-  isBusy,
-  isStreaming,
+  isGenerating,
   needsOption,
   onSend,
   onStop,
@@ -57,7 +75,7 @@ export function ChatComposer({
   const draft = useChatStore((state) => state.drafts[draftKey] ?? "");
   const setDraft = useChatStore((state) => state.setDraft);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const wasBusyRef = useRef(false);
+  useComposerFocus(disabled, isGenerating, needsOption, textareaRef);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -67,18 +85,10 @@ export function ChatComposer({
     textarea.style.height = `${Math.min(textarea.scrollHeight, 192)}px`;
   });
 
-  useEffect(() => {
-    if (wasBusyRef.current && !isBusy && !needsOption) {
-      textareaRef.current?.focus();
-    }
-
-    wasBusyRef.current = isBusy;
-  }, [isBusy, needsOption]);
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || isBusy || needsOption) return;
+    if (!message || disabled || isGenerating || needsOption) return;
 
     setDraft(draftKey, "");
     const sent = await onSend(message);
@@ -93,12 +103,12 @@ export function ChatComposer({
   }
 
   const placeholder = needsOption ? "Choose an option above" : "Message Eve";
-  const sendDisabled = isBusy || needsOption || !draft.trim();
+  const sendDisabled = disabled || isGenerating || needsOption || !draft.trim();
 
   return (
-    <div className="shrink-0 bg-background px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6">
+    <div className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6">
       <form
-        className="mx-auto flex max-w-4xl items-end gap-2 rounded-xl border border-border/25 bg-muted py-2 pr-2 pl-4 transition-colors focus-within:border-ring/50"
+        className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border border-border/25 bg-muted py-2 pr-2 pl-4 transition-colors focus-within:border-ring/50"
         onSubmit={handleSubmit}
       >
         <label className="sr-only" htmlFor="message-input">
@@ -106,8 +116,8 @@ export function ChatComposer({
         </label>
         <textarea
           autoComplete="off"
-          className="max-h-48 min-h-8 flex-1 resize-none overflow-y-auto bg-transparent py-1 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={needsOption}
+          className="max-h-48 min-h-10 flex-1 resize-none overflow-y-auto bg-transparent py-1 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={disabled || needsOption}
           id="message-input"
           onChange={(event) => setDraft(draftKey, event.target.value)}
           onKeyDown={handleKeyDown}
@@ -116,9 +126,9 @@ export function ChatComposer({
           rows={1}
           value={draft}
         />
-        <ComposerButton disabled={sendDisabled} isStreaming={isStreaming} onStop={onStop} />
+        <ComposerButton disabled={sendDisabled} isGenerating={isGenerating} onStop={onStop} />
       </form>
-      <p className="mx-auto mt-2 max-w-4xl text-center text-sm text-muted-foreground">
+      <p className="mx-auto mt-2 max-w-3xl text-center text-sm text-muted-foreground">
         Eve can make mistakes. Check important information.
       </p>
     </div>

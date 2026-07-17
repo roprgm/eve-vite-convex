@@ -3,7 +3,7 @@ import { defaultMessageReducer, type EveMessage, type HandleMessageStreamEvent }
 export type StoredEveEvent = {
   readonly event: unknown;
   readonly eventKey: string;
-  readonly eveSessionId?: string;
+  readonly eveSessionId: string;
 };
 
 function isEveEvent(value: unknown): value is HandleMessageStreamEvent {
@@ -42,10 +42,7 @@ export function createEveMessageProjector() {
       if (!storedEvent) continue;
       eventKeys.push(storedEvent.eventKey);
       if (isEveEvent(storedEvent.event)) {
-        data = reducer.reduce(
-          data,
-          namespaceTurn(storedEvent.event, storedEvent.eveSessionId ?? "legacy"),
-        );
+        data = reducer.reduce(data, namespaceTurn(storedEvent.event, storedEvent.eveSessionId));
       }
     }
 

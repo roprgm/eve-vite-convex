@@ -3,12 +3,14 @@ import { v } from "convex/values";
 
 export default defineSchema({
   chats: defineTable({
-    archivedAt: v.optional(v.number()),
     continuationToken: v.optional(v.string()),
     createdAt: v.number(),
-    eveSessionId: v.optional(v.string()),
-    revision: v.optional(v.number()),
-    status: v.optional(v.union(v.literal("ready"), v.literal("running"), v.literal("error"))),
+    eveSessionId: v.string(),
+    // Legacy stop-workaround fields; retained until existing documents are migrated.
+    resumeAfterStop: v.optional(v.boolean()),
+    revision: v.number(),
+    sessionStreamIndex: v.optional(v.number()),
+    status: v.union(v.literal("ready"), v.literal("running"), v.literal("error")),
     streamIndex: v.number(),
     title: v.string(),
     updatedAt: v.number(),
@@ -16,22 +18,10 @@ export default defineSchema({
     .index("by_eve_session", ["eveSessionId"])
     .index("by_updated_at", ["updatedAt"]),
 
-  messages: defineTable({
-    chatId: v.id("chats"),
-    content: v.string(),
-    createdAt: v.number(),
-    eventKey: v.string(),
-    role: v.union(v.literal("assistant"), v.literal("user")),
-    sequence: v.number(),
-    turnId: v.string(),
-  })
-    .index("by_chat", ["chatId"])
-    .index("by_chat_and_event", ["chatId", "eventKey"]),
-
   events: defineTable({
     chatId: v.id("chats"),
     createdAt: v.number(),
-    eveSessionId: v.optional(v.string()),
+    eveSessionId: v.string(),
     event: v.any(),
     eventKey: v.string(),
     index: v.number(),

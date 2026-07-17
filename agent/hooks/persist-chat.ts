@@ -18,13 +18,12 @@ type PersistEventArgs = {
   continuationToken?: string;
   event: Value;
   eventKey: string;
-  eventType: string;
   eveSessionId: string;
   secret: string;
 };
 
 const persistEvent = makeFunctionReference<"mutation", PersistEventArgs, null>(
-  "messages:persistEvent",
+  "persistence:persistEvent",
 );
 
 let client: ConvexHttpClient | undefined;
@@ -67,7 +66,6 @@ async function persist(event: HandleMessageStreamEvent, ctx: HookContext) {
     continuationToken: toClientContinuationToken(ctx.channel.continuationToken),
     event: toSerializableEvent(event),
     eventKey: getSessionEventKey(ctx.session.id, event),
-    eventType: event.type,
     eveSessionId: ctx.session.id,
     secret: persistence.secret,
   });

@@ -3,17 +3,15 @@ import { lazy, Suspense } from "react";
 
 import { ModelActivity } from "@/components/chat/model-activity";
 
-import "streamdown/styles.css";
-
-const Streamdown = lazy(async () => {
-  const module = await import("streamdown");
-  return { default: module.Streamdown };
+const MarkdownMessage = lazy(async () => {
+  const module = await import("@/components/chat/markdown-message");
+  return { default: module.MarkdownMessage };
 });
 
 export function UserMessage({ text }: { readonly text: string }) {
   return (
     <article aria-label="You" className="flex justify-end py-3">
-      <div className="max-w-[85%] rounded-xl bg-muted px-4 py-2.5 sm:max-w-[75%]">
+      <div className="max-w-[85%] rounded-xl bg-muted px-4 py-1.5 sm:max-w-[75%]">
         <p className="whitespace-pre-wrap">{text}</p>
       </div>
     </article>
@@ -44,10 +42,8 @@ export function ChatMessage({ isActive, message }: ChatMessageProps) {
     <article aria-label="Eve" className="pt-3 pb-8">
       {reasoning && <ModelActivity details={reasoning} label="Thinking..." />}
       {text && (
-        <Suspense fallback={<p className="whitespace-pre-wrap">{text}</p>}>
-          <Streamdown className="model-response [&_li]:py-0" isAnimating={isActive}>
-            {text}
-          </Streamdown>
+        <Suspense fallback={null}>
+          <MarkdownMessage isAnimating={isActive} text={text} />
         </Suspense>
       )}
     </article>
