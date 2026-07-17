@@ -45,7 +45,11 @@ export function ChatMessage({ isActive, message }: ChatMessageProps) {
       {reasoning && <ModelActivity details={reasoning} label="Thinking..." />}
       {text && (
         <Suspense fallback={<p className="whitespace-pre-wrap">{text}</p>}>
-          <Streamdown className="model-response [&_li]:py-0" isAnimating={isActive}>
+          <Streamdown
+            className="model-response [&_li]:py-0"
+            controls={{ table: false }}
+            isAnimating={isActive}
+          >
             {text}
           </Streamdown>
         </Suspense>

@@ -42,6 +42,19 @@ export const get = query({
   },
 });
 
+export const stop = mutation({
+  args: { sessionId: v.string() },
+  handler: async (ctx, { sessionId }) => {
+    const chat = await ctx.db
+      .query("chats")
+      .withIndex("by_eve_session", (q) => q.eq("eveSessionId", sessionId))
+      .unique();
+    if (chat?.status === "running") {
+      await ctx.db.patch(chat._id, { status: "ready", updatedAt: Date.now() });
+    }
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("chats") },
   handler: async (ctx, { id }) => {

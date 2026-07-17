@@ -5,9 +5,9 @@ export default defineSchema({
   chats: defineTable({
     continuationToken: v.optional(v.string()),
     createdAt: v.number(),
-    eveSessionId: v.optional(v.string()),
-    revision: v.optional(v.number()),
-    status: v.optional(v.union(v.literal("ready"), v.literal("running"), v.literal("error"))),
+    eveSessionId: v.string(),
+    revision: v.number(),
+    status: v.union(v.literal("ready"), v.literal("running"), v.literal("error")),
     streamIndex: v.number(),
     title: v.string(),
     updatedAt: v.number(),
@@ -18,7 +18,7 @@ export default defineSchema({
   events: defineTable({
     chatId: v.id("chats"),
     createdAt: v.number(),
-    eveSessionId: v.optional(v.string()),
+    eveSessionId: v.string(),
     event: v.any(),
     eventKey: v.string(),
     index: v.number(),

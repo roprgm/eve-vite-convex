@@ -1,17 +1,24 @@
 import { ArrowUp, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/lib/chat-store";
 
 type ComposerButtonProps = {
   readonly disabled: boolean;
-  readonly isStreaming: boolean;
+  readonly isGenerating: boolean;
   readonly onStop: () => void;
 };
 
-function ComposerButton({ disabled, isStreaming, onStop }: ComposerButtonProps) {
-  if (isStreaming) {
+function ComposerButton({ disabled, isGenerating, onStop }: ComposerButtonProps) {
+  if (isGenerating) {
     return (
       <Button
         aria-label="Stop generating"
@@ -39,25 +46,45 @@ function ComposerButton({ disabled, isStreaming, onStop }: ComposerButtonProps) 
 
 type ChatComposerProps = {
   readonly draftKey: string;
-  readonly isBusy: boolean;
-  readonly isStreaming: boolean;
+  readonly isGenerating: boolean;
   readonly needsOption: boolean;
   readonly onSend: (message: string) => Promise<boolean>;
   readonly onStop: () => void;
+  readonly shouldAutoFocus: boolean;
 };
+
+function useComposerFocus(
+  isGenerating: boolean,
+  needsOption: boolean,
+  textareaRef: RefObject<HTMLTextAreaElement | null>,
+): void {
+  const wasGeneratingRef = useRef(false);
+
+  useEffect(() => {
+    if (wasGeneratingRef.current && !isGenerating && !needsOption) {
+      textareaRef.current?.focus();
+    }
+
+    wasGeneratingRef.current = isGenerating;
+  }, [isGenerating, needsOption, textareaRef]);
+}
 
 export function ChatComposer({
   draftKey,
-  isBusy,
-  isStreaming,
+  isGenerating,
   needsOption,
   onSend,
   onStop,
+  shouldAutoFocus,
 }: ChatComposerProps) {
   const draft = useChatStore((state) => state.drafts[draftKey] ?? "");
   const setDraft = useChatStore((state) => state.setDraft);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const wasBusyRef = useRef(false);
+  useComposerFocus(isGenerating, needsOption, textareaRef);
+
+  useEffect(() => {
+    if (shouldAutoFocus && !needsOption) textareaRef.current?.focus();
+  }, [needsOption, shouldAutoFocus]);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -67,18 +94,10 @@ export function ChatComposer({
     textarea.style.height = `${Math.min(textarea.scrollHeight, 192)}px`;
   });
 
-  useEffect(() => {
-    if (wasBusyRef.current && !isBusy && !needsOption) {
-      textareaRef.current?.focus();
-    }
-
-    wasBusyRef.current = isBusy;
-  }, [isBusy, needsOption]);
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || isBusy || needsOption) return;
+    if (!message || isGenerating || needsOption) return;
 
     setDraft(draftKey, "");
     const sent = await onSend(message);
@@ -93,10 +112,10 @@ export function ChatComposer({
   }
 
   const placeholder = needsOption ? "Choose an option above" : "Message Eve";
-  const sendDisabled = isBusy || needsOption || !draft.trim();
+  const sendDisabled = isGenerating || needsOption || !draft.trim();
 
   return (
-    <div className="shrink-0 bg-background px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6">
+    <div className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6">
       <form
         className="mx-auto flex max-w-4xl items-end gap-2 rounded-xl border border-border/25 bg-muted py-2 pr-2 pl-4 transition-colors focus-within:border-ring/50"
         onSubmit={handleSubmit}
@@ -116,7 +135,7 @@ export function ChatComposer({
           rows={1}
           value={draft}
         />
-        <ComposerButton disabled={sendDisabled} isStreaming={isStreaming} onStop={onStop} />
+        <ComposerButton disabled={sendDisabled} isGenerating={isGenerating} onStop={onStop} />
       </form>
       <p className="mx-auto mt-2 max-w-4xl text-center text-sm text-muted-foreground">
         Eve can make mistakes. Check important information.

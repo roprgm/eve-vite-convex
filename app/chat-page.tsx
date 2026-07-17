@@ -11,14 +11,17 @@ import { toClientContinuationToken } from "@/lib/eve-session";
 
 const NO_EVENTS: readonly StoredEveEvent[] = [];
 
-function getInitialSession(chat: Doc<"chats"> | null) {
-  if (!chat?.eveSessionId) return undefined;
-
+function getInitialSession(chat: Doc<"chats">) {
   return {
     continuationToken: toClientContinuationToken(chat.continuationToken),
     sessionId: chat.eveSessionId,
     streamIndex: chat.streamIndex,
   };
+}
+
+function getSessionRevisionKey(chat: Doc<"chats">): string {
+  // useEveAgent reads initialSession only when its store mounts.
+  return `${chat._id}:${chat.revision}`;
 }
 
 function ChatLoading() {
@@ -77,7 +80,7 @@ function ChatPageContent({ chatId }: { readonly chatId?: string }) {
       events={detail.events}
       historyTruncated={detail.historyTruncated}
       initialSession={getInitialSession(chat)}
-      key={`${chatId}:${chat.revision ?? 0}`}
+      key={getSessionRevisionKey(chat)}
       sharedStatus={chat.status}
       title={chat.title}
     />
@@ -86,5 +89,5 @@ function ChatPageContent({ chatId }: { readonly chatId?: string }) {
 
 export function ChatPage() {
   const { chatId } = useParams();
-  return <ChatPageContent chatId={chatId} key={chatId} />;
+  return <ChatPageContent chatId={chatId} />;
 }

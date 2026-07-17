@@ -1,22 +1,59 @@
-import { type UIEvent, useLayoutEffect, useRef, useState } from "react";
+import { type UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+
+const EDGE_THRESHOLD = 16;
 
 export function useChatScroll() {
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const endRef = useRef<HTMLDivElement>(null);
+  const isAutoScrollingRef = useRef(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const shouldFollowRef = useRef(true);
+
+  const updatePosition = useCallback((viewport: HTMLDivElement): void => {
+    const nextIsAtBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= EDGE_THRESHOLD;
+
+    if (!isAutoScrollingRef.current || nextIsAtBottom) {
+      shouldFollowRef.current = nextIsAtBottom;
+      isAutoScrollingRef.current = false;
+    }
+    setIsAtBottom(nextIsAtBottom);
+  }, []);
 
   useLayoutEffect(() => {
-    if (isAtBottom) endRef.current?.scrollIntoView({ block: "end" });
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    if (shouldFollowRef.current) viewport.scrollTop = viewport.scrollHeight;
+    updatePosition(viewport);
   });
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = viewport?.firstElementChild;
+    if (!viewport || !content) return;
+
+    const observer = new ResizeObserver(() => {
+      if (shouldFollowRef.current) viewport.scrollTop = viewport.scrollHeight;
+      updatePosition(viewport);
+    });
+
+    observer.observe(viewport);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [updatePosition]);
+
   function handleScroll(event: UIEvent<HTMLDivElement>): void {
-    const scroller = event.currentTarget;
-    setIsAtBottom(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80);
+    updatePosition(event.currentTarget);
   }
 
   function scrollToEnd(): void {
-    setIsAtBottom(true);
-    endRef.current?.scrollIntoView({ block: "end" });
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    shouldFollowRef.current = true;
+    isAutoScrollingRef.current = true;
+    viewport.scrollTo({ behavior: "smooth", top: viewport.scrollHeight });
   }
 
-  return { endRef, handleScroll, isAtBottom, scrollToEnd };
+  return { handleScroll, isAtBottom, scrollToEnd, viewportRef };
 }

@@ -1,10 +1,47 @@
 import { ConvexError, v } from "convex/values";
-import { advanceChatLifecycle, deriveChatTitle, parseMessageEvent } from "../lib/chat-logic";
-import { mutation } from "./_generated/server";
+import {
+  advanceChatLifecycle,
+  deriveChatTitle,
+  parseEventType,
+  parseMessageEvent,
+} from "../lib/chat-logic";
+import type { Doc } from "./_generated/dataModel";
+import { type MutationCtx, mutation } from "./_generated/server";
 
 function eventTime(event: { meta?: { at: string } }): number {
   const timestamp = event.meta ? Date.parse(event.meta.at) : Number.NaN;
   return Number.isFinite(timestamp) ? timestamp : Date.now();
+}
+
+type ChatSession = {
+  readonly continuationToken?: string;
+  readonly eveSessionId: string;
+};
+
+async function getOrCreateChat(
+  ctx: MutationCtx,
+  session: ChatSession,
+  createdAt: number,
+): Promise<Doc<"chats">> {
+  const existing = await ctx.db
+    .query("chats")
+    .withIndex("by_eve_session", (q) => q.eq("eveSessionId", session.eveSessionId))
+    .unique();
+  if (existing) return existing;
+
+  const chatId = await ctx.db.insert("chats", {
+    continuationToken: session.continuationToken,
+    createdAt,
+    eveSessionId: session.eveSessionId,
+    revision: 0,
+    status: "running",
+    streamIndex: 0,
+    title: "New chat",
+    updatedAt: createdAt,
+  });
+  const chat = await ctx.db.get(chatId);
+  if (!chat) throw new ConvexError("Could not create chat.");
+  return chat;
 }
 
 export const persistEvent = mutation({
@@ -12,7 +49,6 @@ export const persistEvent = mutation({
     continuationToken: v.optional(v.string()),
     event: v.any(),
     eventKey: v.string(),
-    eventType: v.string(),
     eveSessionId: v.string(),
     secret: v.string(),
   },
@@ -21,28 +57,11 @@ export const persistEvent = mutation({
       throw new ConvexError("Invalid eve persistence secret.");
     }
 
+    const eventType = parseEventType(args.event);
+    if (!eventType) throw new ConvexError("Invalid eve event.");
     const parsedEvent = parseMessageEvent(args.event);
     const createdAt = parsedEvent ? eventTime(parsedEvent) : Date.now();
-    let chat = await ctx.db
-      .query("chats")
-      .withIndex("by_eve_session", (q) => q.eq("eveSessionId", args.eveSessionId))
-      .unique();
-
-    if (!chat) {
-      const chatId = await ctx.db.insert("chats", {
-        continuationToken: args.continuationToken,
-        createdAt,
-        eveSessionId: args.eveSessionId,
-        revision: 0,
-        status: "running",
-        streamIndex: 0,
-        title: "New chat",
-        updatedAt: createdAt,
-      });
-      chat = await ctx.db.get(chatId);
-    }
-
-    if (!chat) throw new ConvexError("Could not create chat.");
+    const chat = await getOrCreateChat(ctx, args, createdAt);
     const chatId = chat._id;
 
     const existing = await ctx.db
@@ -64,7 +83,7 @@ export const persistEvent = mutation({
       index: chat.streamIndex,
     });
 
-    const lifecycle = advanceChatLifecycle(args.eventType, chat.revision ?? 0);
+    const lifecycle = advanceChatLifecycle(eventType, chat.revision);
     await ctx.db.patch(chatId, {
       continuationToken: args.continuationToken,
       revision: lifecycle.revision,
@@ -73,7 +92,7 @@ export const persistEvent = mutation({
       updatedAt: createdAt,
     });
 
-    if (args.eventType !== "message.received") {
+    if (eventType !== "message.received") {
       return null;
     }
 

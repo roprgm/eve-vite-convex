@@ -28,6 +28,7 @@
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.2",
+    "workflow": "5.0.0-beta.34",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
