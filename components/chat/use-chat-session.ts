@@ -1,5 +1,10 @@
 import { useQuery } from "convex/react";
-import { Client, type EveMessage, type SessionState } from "eve/client";
+import {
+  Client,
+  type EveMessage,
+  type HandleMessageStreamEvent,
+  type SessionState,
+} from "eve/client";
 import { useEveAgent } from "eve/react";
 import { useEffect, useMemo, useState } from "react";
 import { href, useNavigate } from "react-router";
@@ -21,6 +26,7 @@ import { findPendingInput, isSessionLimitRequest } from "@/lib/pending-input";
 type UseChatSessionOptions = {
   readonly chatId?: string;
   readonly events: readonly StoredEveEvent[];
+  readonly initialEvents?: readonly HandleMessageStreamEvent[];
   readonly initialSession?: SessionState;
   readonly sharedStatus?: ChatStatus;
 };
@@ -47,6 +53,7 @@ function asError(error: unknown, fallback: string): Error {
 export function useChatSession({
   chatId,
   events,
+  initialEvents,
   initialSession,
   sharedStatus,
 }: UseChatSessionOptions) {
@@ -55,7 +62,7 @@ export function useChatSession({
   const [pendingMessage, setPendingMessage] = useState<PendingUserMessage>();
   const [stoppedMessages, setStoppedMessages] = useState<readonly PendingUserMessage[]>([]);
   const [clientSession] = useState(() => new Client({ host: "" }).session(initialSession));
-  const agent = useEveAgent({ optimistic: false, session: clientSession });
+  const agent = useEveAgent({ initialEvents, optimistic: false, session: clientSession });
   const isAgentBusy = agent.status === "submitted" || agent.status === "streaming";
 
   let startedChatQuery: { sessionId: string } | "skip" = "skip";
@@ -68,7 +75,7 @@ export function useChatSession({
   const persistedMessages = useMemo(() => projectMessages(events), [events, projectMessages]);
   const messageCreatedAt = useMemo(() => projectMessageCreatedAt(events), [events]);
   let messages: readonly EveMessage[] = agent.data.messages;
-  if (chatId) messages = persistedMessages;
+  if (chatId && events.length > 0) messages = persistedMessages;
 
   const userMessageCount = countUserMessages(messages);
   const visibleStoppedMessages = stoppedMessages.filter(
@@ -105,8 +112,17 @@ export function useChatSession({
 
   useEffect(() => {
     if (chatId || isAgentBusy || !startedChatId) return;
-    void navigate(href("/c/:chatId", { chatId: startedChatId }), { replace: true });
-  }, [chatId, isAgentBusy, navigate, startedChatId]);
+    void navigate(href("/c/:chatId", { chatId: startedChatId }), {
+      replace: true,
+      state: {
+        chatHandoff: {
+          chatId: startedChatId,
+          events: agent.events,
+          session: agent.session,
+        },
+      },
+    });
+  }, [agent.events, agent.session, chatId, isAgentBusy, navigate, startedChatId]);
 
   async function send(input: Parameters<typeof agent.send>[0]): Promise<boolean> {
     setLocalError(undefined);

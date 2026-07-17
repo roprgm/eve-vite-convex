@@ -1,3 +1,5 @@
+import { ConvexQueryClient } from "@convex-dev/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -16,11 +18,24 @@ if (!convexUrl) {
 }
 
 const convexClient = new ConvexReactClient(convexUrl);
+const convexQueryClient = new ConvexQueryClient(convexClient);
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      queryFn: convexQueryClient.queryFn(),
+      queryKeyHashFn: convexQueryClient.hashFn(),
+    },
+  },
+});
+
+convexQueryClient.connect(queryClient);
 
 createRoot(root).render(
   <StrictMode>
     <ConvexProvider client={convexClient}>
-      <RouterProvider router={router} />
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
     </ConvexProvider>
   </StrictMode>,
 );

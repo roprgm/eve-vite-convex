@@ -1,5 +1,5 @@
 import { useMutation } from "convex/react";
-import type { SessionState } from "eve/client";
+import type { HandleMessageStreamEvent, SessionState } from "eve/client";
 import { ArrowDown, PanelLeft, Pencil, SquarePen } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -20,6 +20,7 @@ type ChatViewProps = {
   readonly chatId?: string;
   readonly events: readonly StoredEveEvent[];
   readonly historyTruncated?: boolean;
+  readonly initialEvents?: readonly HandleMessageStreamEvent[];
   readonly initialSession?: SessionState;
   readonly sharedStatus?: ChatStatus;
   readonly title: string;
@@ -227,6 +228,7 @@ export function ChatView({
   chatId,
   events,
   historyTruncated,
+  initialEvents,
   initialSession,
   sharedStatus,
   title,
@@ -237,6 +239,7 @@ export function ChatView({
   const session = useChatSession({
     chatId,
     events,
+    initialEvents,
     initialSession,
     sharedStatus,
   });
