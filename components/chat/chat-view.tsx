@@ -202,7 +202,7 @@ function ChatTimeline({
         ref={scroll.viewportRef}
       >
         <div className="min-h-full px-3 sm:px-6">
-          <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col">
+          <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
             <ChatConversation session={session} />
             <ChatNotices historyTruncated={historyTruncated} session={session} />
           </div>

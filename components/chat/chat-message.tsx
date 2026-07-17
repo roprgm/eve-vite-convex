@@ -1,14 +1,9 @@
 import type { EveMessage } from "eve/client";
-import { lazy, Suspense } from "react";
+import { Streamdown } from "streamdown";
 
 import { ModelActivity } from "@/components/chat/model-activity";
 
 import "streamdown/styles.css";
-
-const Streamdown = lazy(async () => {
-  const module = await import("streamdown");
-  return { default: module.Streamdown };
-});
 
 export function UserMessage({ text }: { readonly text: string }) {
   return (
@@ -44,15 +39,14 @@ export function ChatMessage({ isActive, message }: ChatMessageProps) {
     <article aria-label="Eve" className="pt-3 pb-8">
       {reasoning && <ModelActivity details={reasoning} label="Thinking..." />}
       {text && (
-        <Suspense fallback={<p className="whitespace-pre-wrap">{text}</p>}>
-          <Streamdown
-            className="model-response [&_li]:py-0"
-            controls={{ table: false }}
-            isAnimating={isActive}
-          >
-            {text}
-          </Streamdown>
-        </Suspense>
+        <Streamdown
+          animated
+          className="model-response leading-6 [&_li]:py-0"
+          controls={{ table: false }}
+          isAnimating={isActive}
+        >
+          {text}
+        </Streamdown>
       )}
     </article>
   );

@@ -45,6 +45,7 @@ function ComposerButton({ disabled, isGenerating, onStop }: ComposerButtonProps)
 }
 
 type ChatComposerProps = {
+  readonly disabled?: boolean;
   readonly draftKey: string;
   readonly isGenerating: boolean;
   readonly needsOption: boolean;
@@ -53,16 +54,18 @@ type ChatComposerProps = {
 };
 
 function useComposerFocus(
+  disabled: boolean,
   isGenerating: boolean,
   needsOption: boolean,
   textareaRef: RefObject<HTMLTextAreaElement | null>,
 ): void {
   useEffect(() => {
-    if (!isGenerating && !needsOption) textareaRef.current?.focus();
-  }, [isGenerating, needsOption, textareaRef]);
+    if (!disabled && !isGenerating && !needsOption) textareaRef.current?.focus();
+  }, [disabled, isGenerating, needsOption, textareaRef]);
 }
 
 export function ChatComposer({
+  disabled = false,
   draftKey,
   isGenerating,
   needsOption,
@@ -72,7 +75,7 @@ export function ChatComposer({
   const draft = useChatStore((state) => state.drafts[draftKey] ?? "");
   const setDraft = useChatStore((state) => state.setDraft);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useComposerFocus(isGenerating, needsOption, textareaRef);
+  useComposerFocus(disabled, isGenerating, needsOption, textareaRef);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -85,7 +88,7 @@ export function ChatComposer({
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || isGenerating || needsOption) return;
+    if (!message || disabled || isGenerating || needsOption) return;
 
     setDraft(draftKey, "");
     const sent = await onSend(message);
@@ -100,12 +103,12 @@ export function ChatComposer({
   }
 
   const placeholder = needsOption ? "Choose an option above" : "Message Eve";
-  const sendDisabled = isGenerating || needsOption || !draft.trim();
+  const sendDisabled = disabled || isGenerating || needsOption || !draft.trim();
 
   return (
     <div className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6">
       <form
-        className="mx-auto flex max-w-4xl items-end gap-2 rounded-xl border border-border/25 bg-muted py-2 pr-2 pl-4 transition-colors focus-within:border-ring/50"
+        className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border border-border/25 bg-muted py-2 pr-2 pl-4 transition-colors focus-within:border-ring/50"
         onSubmit={handleSubmit}
       >
         <label className="sr-only" htmlFor="message-input">
@@ -113,8 +116,8 @@ export function ChatComposer({
         </label>
         <textarea
           autoComplete="off"
-          className="max-h-48 min-h-8 flex-1 resize-none overflow-y-auto bg-transparent py-1 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={needsOption}
+          className="max-h-48 min-h-10 flex-1 resize-none overflow-y-auto bg-transparent py-1 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={disabled || needsOption}
           id="message-input"
           onChange={(event) => setDraft(draftKey, event.target.value)}
           onKeyDown={handleKeyDown}
@@ -125,7 +128,7 @@ export function ChatComposer({
         />
         <ComposerButton disabled={sendDisabled} isGenerating={isGenerating} onStop={onStop} />
       </form>
-      <p className="mx-auto mt-2 max-w-4xl text-center text-sm text-muted-foreground">
+      <p className="mx-auto mt-2 max-w-3xl text-center text-sm text-muted-foreground">
         Eve can make mistakes. Check important information.
       </p>
     </div>

@@ -3,7 +3,6 @@ import { LoaderCircle, SquarePen, Trash2, X } from "lucide-react";
 import { href, Link, useNavigate } from "react-router";
 
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { NEW_CHAT_DRAFT, useChatStore } from "@/lib/chat-store";
@@ -75,17 +74,6 @@ function ChatRow({
   );
 }
 
-function ChatListSkeleton() {
-  return (
-    <div aria-label="Loading chats" role="status">
-      <Skeleton className="mb-0.5 h-7 w-full" />
-      <Skeleton className="mb-0.5 h-7 w-full opacity-70" />
-      <Skeleton className="mb-0.5 h-7 w-full opacity-40" />
-      <Skeleton className="mb-0.5 h-7 w-full opacity-20" />
-    </div>
-  );
-}
-
 export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: string | null }) {
   const { results, status, loadMore } = usePaginatedQuery(
     api.chats.list,
@@ -151,7 +139,6 @@ export function ChatSidebar({ selectedChatId }: { readonly selectedChatId: strin
           className="app-scrollbar scroll-fade -mr-3 mt-4 min-h-0 flex-1 overflow-y-auto pr-3 [scrollbar-gutter:stable] md:-mr-2 md:pr-2"
         >
           <p className="px-2 pb-1.5 text-sm font-medium text-muted-foreground">Chats</p>
-          {status === "LoadingFirstPage" && <ChatListSkeleton />}
           {results.map((chat) => (
             <ChatRow chat={chat} isSelected={selectedChatId === chat._id} key={chat._id} />
           ))}
