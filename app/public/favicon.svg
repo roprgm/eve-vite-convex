@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>Eve</title>
+  <rect width="256" height="256" rx="48" fill="#202020" />
+  <g transform="translate(40 66) scale(2.3305)" fill="#fff">
+    <path d="M75.52 8.47H0V0h75.52zM38.66 30.55H0v-8.47h38.66zM45.87 52.98H0v-8.47h45.87z" />
+  </g>
+</svg>
