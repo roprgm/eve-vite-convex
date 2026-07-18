@@ -10,6 +10,7 @@
 
 import type * as chats from "../chats.js";
 import type * as persistence from "../persistence.js";
+import type * as title from "../title.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +21,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   chats: typeof chats;
   persistence: typeof persistence;
+  title: typeof title;
 }>;
 
 /**

@@ -1,75 +1,66 @@
-import { useMutation } from "convex/react";
-import { type MouseEvent, useState } from "react";
-import { useMatch, useNavigate } from "react-router";
+import { useConvexMutation } from "@convex-dev/react-query";
+import { useMutation } from "@tanstack/react-query";
 
+import type { ChatSummary } from "@/components/chat/chat-sidebar-item";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
-
-export type DeleteTarget = Pick<Doc<"chats">, "_id" | "title">;
+import { clearChatRuntime } from "@/lib/chat-runtime";
 
 type DeleteChatDialogProps = {
   readonly onClose: () => void;
-  readonly target?: DeleteTarget;
+  readonly onDeleted: (chatId: string) => void;
+  readonly target?: ChatSummary;
 };
 
-export function DeleteChatDialog({ onClose, target }: DeleteChatDialogProps) {
-  const removeChat = useMutation(api.chats.remove);
-  const selectedChatId = useMatch("/c/:chatId")?.params.chatId;
-  const navigate = useNavigate();
-  const [error, setError] = useState<string>();
-  const [isPending, setIsPending] = useState(false);
+export function DeleteChatDialog({ onClose, onDeleted, target }: DeleteChatDialogProps) {
+  const removeChat = useMutation({ mutationFn: useConvexMutation(api.chats.remove) });
 
-  async function confirmDelete(event: MouseEvent<HTMLButtonElement>): Promise<void> {
+  function remove(): void {
     if (!target) return;
-    const dialog = event.currentTarget.closest("dialog");
-    setError(undefined);
-    setIsPending(true);
-
-    try {
-      await removeChat({ id: target._id });
-      if (target._id === selectedChatId) void navigate("/");
-      dialog?.close();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not delete chat.");
-    } finally {
-      setIsPending(false);
-    }
+    removeChat.mutate(
+      { chatId: target.chatId },
+      {
+        onSuccess: () => {
+          clearChatRuntime(target.chatId);
+          onDeleted(target.chatId);
+          document.querySelector<HTMLDialogElement>("#delete-chat-dialog")?.close();
+        },
+      },
+    );
   }
 
   return (
     <dialog
+      aria-describedby="delete-chat-description"
       aria-labelledby="delete-chat-title"
-      className="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl border bg-card p-0 text-card-foreground shadow-2xl backdrop:bg-black/70"
+      className="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl border bg-card p-5 text-card-foreground shadow-2xl backdrop:bg-black/70"
       id="delete-chat-dialog"
-      onCancel={(event) => isPending && event.preventDefault()}
+      onCancel={(event) => removeChat.isPending && event.preventDefault()}
       onClose={() => {
-        setError(undefined);
+        removeChat.reset();
         onClose();
       }}
     >
-      <div className="p-5">
-        <h2 className="font-medium" id="delete-chat-title">
-          Delete chat permanently?
-        </h2>
-        <p className="mt-2 text-muted-foreground">
-          “{target?.title}” and its messages cannot be recovered.
-        </p>
-        {error && (
-          <Alert className="mt-4" variant="destructive">
-            {error}
-          </Alert>
-        )}
-        <form className="mt-5 flex justify-end gap-2" method="dialog">
-          <Button autoFocus disabled={isPending} type="submit" variant="outline">
-            Cancel
-          </Button>
-          <Button disabled={isPending} onClick={confirmDelete} variant="destructive">
-            Delete
-          </Button>
-        </form>
-      </div>
+      <h2 className="font-medium" id="delete-chat-title">
+        Delete chat permanently?
+      </h2>
+      <p className="mt-2 text-muted-foreground" id="delete-chat-description">
+        “{target?.title}” and its messages cannot be recovered.
+      </p>
+      {removeChat.isError && (
+        <Alert className="mt-4" variant="destructive">
+          Could not delete this chat.
+        </Alert>
+      )}
+      <form className="mt-5 flex justify-end gap-2" method="dialog">
+        <Button disabled={removeChat.isPending} type="submit" variant="outline">
+          Cancel
+        </Button>
+        <Button disabled={removeChat.isPending} onClick={remove} variant="destructive">
+          Delete
+        </Button>
+      </form>
     </dialog>
   );
 }

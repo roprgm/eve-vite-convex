@@ -3,14 +3,14 @@ import { ArrowDown } from "lucide-react";
 import type { ComponentProps, PropsWithChildren } from "react";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
 function MessageScroller({ children }: PropsWithChildren) {
   return (
     <MessageScrollerPrimitive.Provider autoScroll>
       <MessageScrollerPrimitive.Root className="relative min-h-0 flex-1 overflow-hidden">
         <MessageScrollerPrimitive.Viewport className="app-scrollbar scroll-fade size-full overflow-y-auto overscroll-contain scrollbar-gutter-stable">
-          <MessageScrollerPrimitive.Content className="flex h-max min-h-full flex-col px-3 py-5 sm:px-6">
+          <MessageScrollerPrimitive.Content className="flex h-max min-h-full flex-col px-4 py-5 sm:px-6">
             {children}
           </MessageScrollerPrimitive.Content>
         </MessageScrollerPrimitive.Viewport>

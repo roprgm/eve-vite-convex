@@ -1,84 +1,75 @@
-import { defaultMessageReducer, type EveMessage, type HandleMessageStreamEvent } from "eve/client";
+import {
+  type ClientMessageSubmittedEvent,
+  defaultMessageReducer,
+  type EveAgentReducerEvent,
+  type EveMessage,
+  type HandleMessageStreamEvent,
+} from "eve/client";
 
-export type StoredEveEvent = {
-  readonly createdAt?: number;
-  readonly event: unknown;
-  readonly eventKey: string;
-  readonly eveSessionId: string;
-  readonly index?: number;
+export type OptimisticChatMessage = {
+  readonly createdAt: number;
+  readonly message: string;
+  readonly startIndex: number;
+  readonly submissionId: string;
 };
 
-function isEveEvent(value: unknown): value is HandleMessageStreamEvent {
-  return typeof value === "object" && value !== null && "type" in value;
-}
+export type StoredEveEvent = {
+  readonly event: HandleMessageStreamEvent;
+  readonly index: number;
+};
 
-function getEventTime(storedEvent: StoredEveEvent): number | undefined {
-  const event = storedEvent.event;
-  const eventTime = isEveEvent(event) && "meta" in event ? event.meta?.at : undefined;
-  const createdAt = storedEvent.createdAt ?? (eventTime ? Date.parse(eventTime) : undefined);
-  return createdAt !== undefined && Number.isFinite(createdAt) ? createdAt : undefined;
-}
+type ProjectedEveMessage = EveMessage & { readonly createdAt?: number };
 
-function namespaceTurn(event: HandleMessageStreamEvent, sessionId: string) {
-  const data = "data" in event ? event.data : undefined;
-  if (!data || typeof data !== "object" || !("turnId" in data)) return event;
-
+function optimisticEvent(optimistic: OptimisticChatMessage): EveAgentReducerEvent {
   return {
-    ...event,
-    data: { ...data, turnId: `${sessionId}:${data.turnId}` },
-  } as HandleMessageStreamEvent;
+    data: {
+      createdAt: optimistic.createdAt,
+      message: optimistic.message,
+      submissionId: optimistic.submissionId,
+    },
+    type: "client.message.submitted",
+  } satisfies ClientMessageSubmittedEvent;
 }
 
-export function projectEveChat(events: readonly StoredEveEvent[]) {
-  const projectedEvents: HandleMessageStreamEvent[] = [];
-  const messageCreatedAt = new Map<string, number>();
-  const reasoningStartedAt = new Map<string, number>();
-  const reasoningDurationSeconds = new Map<string, number>();
+export function projectEveChat(
+  storedEvents: readonly StoredEveEvent[],
+  optimistic?: OptimisticChatMessage,
+): readonly ProjectedEveMessage[] {
+  const startIndex = optimistic?.startIndex ?? Number.POSITIVE_INFINITY;
+  const before = storedEvents
+    .filter((stored) => stored.index < startIndex)
+    .map(({ event }) => event);
+  const after = storedEvents
+    .filter((stored) => stored.index >= startIndex)
+    .map(({ event }) => event);
+  const projected: EveAgentReducerEvent[] = [...before];
+  const received = after.find((event) => event.type === "message.received");
+  if (optimistic && !received) projected.push(optimisticEvent(optimistic));
+  projected.push(...after);
 
-  for (const storedEvent of events) {
-    if (!isEveEvent(storedEvent.event)) continue;
-    const event = storedEvent.event;
-    projectedEvents.push(namespaceTurn(event, storedEvent.eveSessionId));
-
-    const data = "data" in event ? event.data : undefined;
-    if (!data || typeof data !== "object" || !("turnId" in data)) continue;
-    if (typeof data.turnId !== "string") continue;
-    const createdAt = getEventTime(storedEvent);
-    if (createdAt === undefined) continue;
-
-    const role = event.type === "message.received" ? "user" : "assistant";
-    const messageId = `${storedEvent.eveSessionId}:${data.turnId}:${role}`;
-    if (!messageCreatedAt.has(messageId)) messageCreatedAt.set(messageId, createdAt);
-    if (event.type !== "reasoning.appended" && event.type !== "reasoning.completed") continue;
-
-    if (event.type === "reasoning.appended") {
-      if (!reasoningStartedAt.has(messageId)) reasoningStartedAt.set(messageId, createdAt);
-      continue;
+  const createdAt = new Map<string, number>();
+  for (const { event } of storedEvents) {
+    const timestamp = Date.parse(event.meta?.at ?? "");
+    if (!Number.isFinite(timestamp)) continue;
+    if (event.type === "turn.started") {
+      createdAt.set(`${event.data.turnId}:assistant`, timestamp);
     }
-
-    const started = reasoningStartedAt.get(messageId);
-    if (started === undefined) continue;
-    reasoningDurationSeconds.set(messageId, Math.max(1, Math.round((createdAt - started) / 1_000)));
+    if (event.type === "message.received") {
+      createdAt.set(`${event.data.turnId}:user`, timestamp);
+    }
+  }
+  if (optimistic) {
+    createdAt.set(`optimistic:${optimistic.submissionId}:user`, optimistic.createdAt);
+  }
+  if (optimistic && received) {
+    createdAt.set(`${received.data.turnId}:user`, optimistic.createdAt);
   }
 
   const reducer = defaultMessageReducer();
-  const { messages } = projectedEvents.reduce(reducer.reduce, reducer.initial());
-  return { events: projectedEvents, messageCreatedAt, messages, reasoningDurationSeconds };
-}
-
-export function namespaceEveMessages(
-  messages: readonly EveMessage[],
-  sessionId: string | undefined,
-  events: readonly StoredEveEvent[],
-): readonly EveMessage[] {
-  if (!sessionId) return messages;
-
-  const prefixes = [...new Set(events.map((event) => `${event.eveSessionId}:`))];
-  prefixes.push(`${sessionId}:`);
-
-  return messages.map((message) =>
-    prefixes.some((prefix) => message.id.startsWith(prefix))
-      ? message
-      : { ...message, id: `${sessionId}:${message.id}` },
-  );
+  const { messages } = projected.reduce(reducer.reduce, reducer.initial());
+  return messages.map((message) => {
+    const timestamp = createdAt.get(message.id);
+    if (timestamp === undefined) return message;
+    return { ...message, createdAt: timestamp };
+  });
 }

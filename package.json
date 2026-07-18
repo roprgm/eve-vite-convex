@@ -11,6 +11,7 @@
     "dev:eve": "eve dev --port 4879 --no-ui",
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:eve": "eve build && bun scripts/embed-convex-url.ts",
     "format": "biome format --write .",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -21,6 +22,7 @@
     "@shadcn/react": "^0.2.1",
     "@tailwindcss/vite": "^4.3.2",
     "@tanstack/react-query": "^5.101.2",
+    "@vercel/oidc": "^3.8.0",
     "convex": "^1.42.2",
     "eve": "^0.24.6",
     "lucide-react": "^1.24.0",
