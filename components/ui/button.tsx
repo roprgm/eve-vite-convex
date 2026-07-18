@@ -1,14 +1,13 @@
 import type { ButtonHTMLAttributes } from "react";
 
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
-type ButtonVariant = "default" | "destructive" | "outline" | "ghost" | "destructive-ghost";
+type ButtonVariant = "default" | "destructive" | "outline" | "ghost";
 type ButtonSize = "default" | "sm" | "icon-sm";
 
 const variants: Record<ButtonVariant, string> = {
   default: "bg-primary text-primary-foreground hover:bg-primary/90",
-  destructive: "bg-destructive text-white hover:bg-destructive/90",
-  "destructive-ghost": "text-destructive hover:bg-destructive/10 hover:text-destructive",
+  destructive: "bg-destructive text-background hover:bg-destructive/90",
   outline: "border bg-background hover:bg-accent hover:text-accent-foreground",
   ghost: "hover:bg-accent hover:text-accent-foreground",
 };

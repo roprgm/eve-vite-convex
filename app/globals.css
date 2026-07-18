@@ -243,15 +243,19 @@
   }
 }
 
-@keyframes message-enter {
-  from {
+@keyframes fade {
+  0%,
+  100% {
     opacity: 0;
-    transform: translateY(10px);
+  }
+  15%,
+  80% {
+    opacity: 1;
   }
 }
 
-.message-enter {
-  animation: message-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.fade {
+  animation: fade 1.2s ease both;
 }
 
 @utility shimmer {
@@ -277,5 +281,9 @@
     animation-iteration-count: 1;
     scroll-behavior: auto;
     transition-duration: 0.01ms;
+  }
+
+  .fade {
+    animation: none;
   }
 }

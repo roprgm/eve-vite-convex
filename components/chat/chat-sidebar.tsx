@@ -1,61 +1,14 @@
-import { usePaginatedQuery } from "convex/react";
-import { AlignLeft, LoaderCircle, SquarePen, Trash2, X } from "lucide-react";
+import { useConvexPaginatedQuery } from "@convex-dev/react-query";
+import { AlignLeft, SquarePen, X } from "lucide-react";
 import { useState } from "react";
-import { href, Link, useNavigate } from "react-router";
+import { href, useNavigate } from "react-router";
 
-import { DeleteChatDialog, type DeleteTarget } from "@/components/chat/delete-chat-dialog";
+import { ChatSidebarItem, type ChatSummary } from "@/components/chat/chat-sidebar-item";
+import { DeleteChatDialog } from "@/components/chat/delete-chat-dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
-import { NEW_CHAT_DRAFT, useChatStore } from "@/lib/chat-store";
-import { cn } from "@/lib/cn";
-
-function ChatRow({
-  chat,
-  isSelected,
-  onDelete,
-  onNavigate,
-}: {
-  readonly chat: Doc<"chats">;
-  readonly isSelected: boolean;
-  readonly onDelete: (chat: DeleteTarget) => void;
-  readonly onNavigate: () => void;
-}) {
-  return (
-    <div
-      className={cn(
-        "group mb-0.5 flex h-7 min-w-0 items-center rounded-md transition-colors hover:bg-sidebar-hover focus-within:bg-sidebar-hover",
-        isSelected &&
-          "bg-sidebar-selected hover:bg-sidebar-selected focus-within:bg-sidebar-selected",
-      )}
-    >
-      <Link
-        aria-current={isSelected ? "page" : undefined}
-        className="flex h-full min-w-0 flex-1 items-center px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
-        onClick={isSelected ? onNavigate : undefined}
-        to={href("/c/:chatId", { chatId: chat._id })}
-      >
-        <span className="block truncate">{chat.title}</span>
-      </Link>
-      {chat.status === "running" ? (
-        <LoaderCircle
-          aria-label={`${chat.title} is working`}
-          className="mr-2 animate-spin text-muted-foreground"
-        />
-      ) : (
-        <Button
-          aria-label={`Delete ${chat.title}`}
-          className="mr-0.5 text-muted-foreground md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-          onClick={() => onDelete(chat)}
-          size="icon-sm"
-          variant="destructive-ghost"
-        >
-          <Trash2 aria-hidden="true" />
-        </Button>
-      )}
-    </div>
-  );
-}
+import { useChatStore } from "@/lib/chat-store";
+import { cn } from "@/lib/utils";
 
 type ChatSidebarProps = {
   readonly isOpen: boolean;
@@ -64,23 +17,29 @@ type ChatSidebarProps = {
 };
 
 export function ChatSidebar({ isOpen, onClose, selectedChatId }: ChatSidebarProps) {
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.chats.list,
-    {},
-    { initialNumItems: 50 },
-  );
+  const {
+    loadMore,
+    results: chats,
+    status,
+  } = useConvexPaginatedQuery(api.chats.list, {}, { initialNumItems: 50 });
   const setDraft = useChatStore((state) => state.setDraft);
-  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>();
   const navigate = useNavigate();
+  const [deleteTarget, setDeleteTarget] = useState<ChatSummary>();
 
-  function openDelete(target: DeleteTarget): void {
-    setDeleteTarget(target);
+  function openDelete(chat: ChatSummary): void {
+    setDeleteTarget(chat);
     document.querySelector<HTMLDialogElement>("#delete-chat-dialog")?.showModal();
   }
 
+  function chatDeleted(chatId: string): void {
+    if (selectedChatId !== chatId) return;
+    onClose();
+    void navigate(href("/"));
+  }
+
   function openNewChat(): void {
-    setDraft(NEW_CHAT_DRAFT, "");
-    if (selectedChatId === null) onClose();
+    setDraft("");
+    onClose();
     void navigate("/");
   }
 
@@ -132,11 +91,11 @@ export function ChatSidebar({ isOpen, onClose, selectedChatId }: ChatSidebarProp
           className="app-scrollbar scroll-fade -mr-3 mt-4 min-h-0 flex-1 overflow-y-auto pr-3 [scrollbar-gutter:stable] md:-mr-2 md:pr-2"
         >
           <p className="px-2 pb-1.5 text-sm font-medium text-muted-foreground">Chats</p>
-          {results.map((chat) => (
-            <ChatRow
+          {chats.map((chat) => (
+            <ChatSidebarItem
               chat={chat}
-              isSelected={selectedChatId === chat._id}
-              key={chat._id}
+              isSelected={selectedChatId === chat.chatId}
+              key={chat.chatId}
               onDelete={openDelete}
               onNavigate={onClose}
             />
@@ -148,7 +107,11 @@ export function ChatSidebar({ isOpen, onClose, selectedChatId }: ChatSidebarProp
           )}
         </nav>
       </aside>
-      <DeleteChatDialog onClose={() => setDeleteTarget(undefined)} target={deleteTarget} />
+      <DeleteChatDialog
+        onClose={() => setDeleteTarget(undefined)}
+        onDeleted={chatDeleted}
+        target={deleteTarget}
+      />
     </>
   );
 }

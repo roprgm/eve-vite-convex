@@ -1,51 +1,28 @@
-import { useQuery } from "convex/react";
-import {
-  Client,
-  type EveMessage,
-  type HandleMessageStreamEvent,
-  type SendTurnPayload,
-  type SessionState,
-} from "eve/client";
-import { useEveAgent } from "eve/react";
-import { useEffect, useMemo, useState } from "react";
-import { href, useNavigate } from "react-router";
+import type { EveMessage, SendTurnPayload, SessionState } from "eve/client";
+import { useEffect, useMemo } from "react";
 
-import { api } from "@/convex/_generated/api";
-import type { ChatStatus } from "@/lib/chat-logic";
+import {
+  type ChatRuntime,
+  clearChatRuntime,
+  followChat,
+  sendChat,
+  stopChat,
+  useChatRuntime,
+} from "@/lib/chat-runtime";
 import { useChatStore } from "@/lib/chat-store";
-import { namespaceEveMessages, projectEveChat, type StoredEveEvent } from "@/lib/eve-events";
-import { MODEL_HEADER } from "@/lib/models";
+import { projectEveChat, type StoredEveEvent } from "@/lib/eve-events";
 import { findPendingInput, isSessionLimitRequest } from "@/lib/pending-input";
 
+export type ChatStatus = "error" | "ready" | "running";
+export type StoredChat = SessionState & { readonly status: ChatStatus };
+
 type UseChatSessionOptions = {
-  readonly chatId?: string;
-  readonly events: readonly StoredEveEvent[];
-  readonly initialEvents?: readonly HandleMessageStreamEvent[];
-  readonly initialSession?: SessionState;
-  readonly sharedStatus?: ChatStatus;
+  readonly chat?: StoredChat;
+  readonly chatId: string;
+  readonly checkpointEvents: readonly StoredEveEvent[];
 };
 
-type PendingUserMessage = {
-  readonly active: boolean;
-  readonly createdAt: number;
-  readonly id: string;
-  readonly text: string;
-  readonly userMessageCount: number;
-};
-
-const PERSISTED_CHAT_ERROR = new Error(
-  "This chat stopped unexpectedly. Send another message to try again.",
-);
-const SESSION_TOKEN_LIMIT_ERROR = new Error(
-  "This chat has reached its token limit. Start a new chat to continue.",
-);
-
-function asError(error: unknown, fallback: string): Error {
-  if (error instanceof Error) return error;
-  return new Error(fallback);
-}
-
-function hasAssistantTextAfterLatestUser(messages: readonly EveMessage[]) {
+function hasAssistantTextAfterLatestUser(messages: readonly EveMessage[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message || message.role === "user") return false;
@@ -54,147 +31,105 @@ function hasAssistantTextAfterLatestUser(messages: readonly EveMessage[]) {
   return false;
 }
 
-export function useChatSession({
-  chatId,
-  events,
-  initialEvents,
-  initialSession,
-  sharedStatus,
-}: UseChatSessionOptions) {
-  const navigate = useNavigate();
+function chatError(
+  limitReached: boolean,
+  runtimeError: string | undefined,
+  chat: StoredChat | undefined,
+): string | undefined {
+  if (limitReached) return "This chat has reached its token limit. Start a new chat to continue.";
+  if (runtimeError) return runtimeError;
+  if (chat?.status !== "error") return;
+  if (chat.continuationToken) {
+    return "This chat stopped unexpectedly. Send another message to try again.";
+  }
+  return "This chat ended unexpectedly. Start a new chat to continue.";
+}
+
+function activityLabel(
+  isGenerating: boolean,
+  messages: readonly EveMessage[],
+  hasInput: boolean,
+  error: string | undefined,
+): string | undefined {
+  if (!isGenerating) return;
+  if (hasInput) return;
+  if (hasAssistantTextAfterLatestUser(messages)) return;
+  if (error) return;
+  return "Thinking...";
+}
+
+function availableInput(input: ReturnType<typeof findPendingInput>) {
+  if (isSessionLimitRequest(input)) return;
+  return input;
+}
+
+function isCheckpointed(chat: StoredChat | undefined, runtime: ChatRuntime | undefined): boolean {
+  if (!chat) return false;
+  if (!runtime) return false;
+  if (!runtime.events.length) return chat.streamIndex > runtime.connection.index;
+  return chat.streamIndex >= runtime.connection.index;
+}
+
+export function useChatSession({ chat, chatId, checkpointEvents }: UseChatSessionOptions) {
+  const status = chat?.status;
   const selectedModel = useChatStore((state) => state.selectedModel);
-  const persisted = useMemo(() => projectEveChat(events), [events]);
-  const [localError, setLocalError] = useState<Error>();
-  const [pendingMessages, setPendingMessages] = useState<readonly PendingUserMessage[]>([]);
-  const [clientSession] = useState(() => new Client({ host: "" }).session(initialSession));
-  const [startingEvents] = useState(() => initialEvents ?? persisted.events);
-  const agent = useEveAgent({
-    initialEvents: startingEvents,
-    optimistic: false,
-    session: clientSession,
-  });
-  const isAgentBusy = agent.status === "submitted" || agent.status === "streaming";
-
-  const startedChatId = useQuery(
-    api.chats.getByEveSession,
-    !chatId && agent.session.sessionId ? { sessionId: agent.session.sessionId } : "skip",
-  );
-
-  const localMessages = useMemo(
-    () => namespaceEveMessages(agent.data.messages, agent.session.sessionId, events),
-    [agent.data.messages, agent.session.sessionId, events],
-  );
-  const persistedStreamIndex = (events.at(-1)?.index ?? -1) + 1;
-  const useLocalMessages = isAgentBusy || agent.session.streamIndex > persistedStreamIndex;
-  const messages = useLocalMessages ? localMessages : persisted.messages;
-
-  const userMessageCount = messages.filter((message) => message.role === "user").length;
-  const visiblePendingMessages = pendingMessages.filter(
-    (message) => userMessageCount <= message.userMessageCount,
-  );
-  const lastPendingMessage = visiblePendingMessages.at(-1);
-  const activePendingMessage = lastPendingMessage?.active ? lastPendingMessage : undefined;
-  const pendingInput = findPendingInput(messages);
-  const sessionLimitReached = isSessionLimitRequest(pendingInput);
-  const visiblePendingInput = sessionLimitReached ? undefined : pendingInput;
-  const needsOption = Boolean(
-    visiblePendingInput?.options?.length && !visiblePendingInput.allowFreeform,
-  );
-  const assistantTextHasStarted =
-    !activePendingMessage && hasAssistantTextAfterLatestUser(messages);
-  const isGenerating = sharedStatus === "running" || isAgentBusy;
-  const isWorking = isGenerating || Boolean(activePendingMessage);
-  const error = sessionLimitReached
-    ? SESSION_TOKEN_LIMIT_ERROR
-    : (localError ??
-      agent.error ??
-      (sharedStatus === "error" && !isAgentBusy ? PERSISTED_CHAT_ERROR : undefined));
-  const activityLabel =
-    isWorking && !pendingInput && !assistantTextHasStarted && !error ? "Thinking..." : undefined;
+  const runtime = useChatRuntime(chatId);
+  const runtimeStatus = runtime?.connection.status;
+  const cursor = chat?.streamIndex ?? 0;
+  const messages = useMemo(() => {
+    const events = runtime?.events.filter((event) => event.index >= cursor) ?? [];
+    return projectEveChat([...checkpointEvents, ...events], runtime?.optimistic);
+  }, [checkpointEvents, cursor, runtime?.events, runtime?.optimistic]);
+  const checkpointed = isCheckpointed(chat, runtime);
 
   useEffect(() => {
-    if (chatId || isAgentBusy || !startedChatId) return;
-    void navigate(href("/c/:chatId", { chatId: startedChatId }), {
-      replace: true,
-      state: {
-        chatHandoff: {
-          chatId: startedChatId,
-          events: agent.events,
-          session: agent.session,
-        },
-      },
-    });
-  }, [agent.events, agent.session, chatId, isAgentBusy, navigate, startedChatId]);
+    if (status === "running" && chat) followChat(chatId, chat);
+    if (!runtimeStatus || runtimeStatus === "active") return;
+    if (checkpointed) clearChatRuntime(chatId);
+  }, [chat, chatId, checkpointed, runtimeStatus, status]);
 
-  async function send(request: SendTurnPayload): Promise<boolean> {
-    setLocalError(undefined);
-    try {
-      await agent.send({
-        ...request,
-        headers: { ...request.headers, [MODEL_HEADER]: selectedModel },
-      });
-      return true;
-    } catch (error) {
-      setLocalError(asError(error, "Could not send message."));
-      return false;
-    }
+  const pendingInput = findPendingInput(messages);
+  const visibleInput = availableInput(pendingInput);
+  const sessionLimitReached = isSessionLimitRequest(pendingInput);
+  const needsOption = Boolean(visibleInput?.options?.length && !visibleInput.allowFreeform);
+  const running = runtime?.connection.status === "active" || status === "running";
+  const ended = Boolean(chat?.sessionId && !chat.continuationToken);
+  const isGenerating = running && runtime?.connection.status !== "stopped";
+  const error = chatError(sessionLimitReached, runtime?.error, chat);
+  const canContinue = !sessionLimitReached && !ended;
+  const waitingForCheckpoint = Boolean(runtime?.events.length) && !checkpointed;
+  const canSend = canContinue && !waitingForCheckpoint;
+  const acceptsText = Boolean(chat) && canSend && !needsOption;
+  const disabled = running || !acceptsText;
+
+  function send(input: SendTurnPayload): void {
+    if (!chat) return;
+    if (running || !canSend) return;
+    sendChat(chatId, input, { modelId: selectedModel, sessionState: chat });
   }
 
-  async function sendMessage(message: string): Promise<boolean> {
-    if (chatId && pendingInput) {
-      return send({ inputResponses: [{ requestId: pendingInput.requestId, text: message }] });
+  function sendMessage(message: string): void {
+    if (!visibleInput) {
+      send({ message });
+      return;
     }
-
-    const pendingMessage: PendingUserMessage = {
-      active: true,
-      createdAt: Date.now(),
-      id: crypto.randomUUID(),
-      text: message,
-      userMessageCount: userMessageCount + visiblePendingMessages.length,
-    };
-    setPendingMessages((messages) => [...messages, pendingMessage]);
-    const sent = await send({ message });
-    if (!sent) {
-      setPendingMessages((messages) => messages.filter(({ id }) => id !== pendingMessage.id));
-    }
-    return sent;
+    send({ inputResponses: [{ requestId: visibleInput.requestId, text: message }] });
   }
 
   function answerQuestion(optionId: string): void {
-    if (!pendingInput || isGenerating) return;
-    void send({ inputResponses: [{ requestId: pendingInput.requestId, optionId }] });
-  }
-
-  async function stop(): Promise<void> {
-    agent.stop();
-    if (activePendingMessage) {
-      setPendingMessages((messages) =>
-        messages.map((message) =>
-          message.id === activePendingMessage.id ? { ...message, active: false } : message,
-        ),
-      );
-    }
-    try {
-      await clientSession.cancel();
-    } catch (error) {
-      setLocalError(asError(error, "Could not stop this chat."));
-    }
+    if (!visibleInput) return;
+    send({ inputResponses: [{ requestId: visibleInput.requestId, optionId }] });
   }
 
   return {
     answerQuestion,
-    activityLabel,
+    activityLabel: activityLabel(isGenerating, messages, Boolean(pendingInput), error),
+    disabled,
     error,
-    isEmpty: messages.length === 0 && visiblePendingMessages.length === 0,
-    isGenerating: isWorking && !error,
-    messageCreatedAt: persisted.messageCreatedAt,
+    isGenerating,
     messages,
-    needsOption,
-    pendingInput: visiblePendingInput,
-    reasoningDurationSeconds: persisted.reasoningDurationSeconds,
+    pendingInput: visibleInput,
     sendMessage,
-    sessionLimitReached,
-    stop,
-    visiblePendingMessages,
+    stop: () => stopChat(chatId, chat),
   };
 }

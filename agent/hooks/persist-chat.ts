@@ -1,132 +1,95 @@
 import { ConvexHttpClient } from "convex/browser";
-import { makeFunctionReference } from "convex/server";
-import type { Value } from "convex/values";
-import type { HandleMessageStreamEvent } from "eve/client";
+import { Client, type HandleMessageStreamEvent } from "eve/client";
 import { defineHook, type HookContext } from "eve/hooks";
 
-import { toClientContinuationToken } from "@/lib/eve-session";
+import { api } from "@/convex/_generated/api";
+import { CHAT_ID_ATTRIBUTE, EVE_ORIGIN_ATTRIBUTE, isPublicChatId } from "@/lib/chat-identity";
+import { compactTurn } from "@/lib/eve-checkpoint";
 
-type SequencedEvent = HandleMessageStreamEvent & {
-  data?: {
-    sequence?: number;
-    stepIndex?: number;
-    turnId?: string;
-  };
-};
-
-type PersistEventArgs = {
-  continuationToken?: string;
-  event: Value;
-  eventKey: string;
-  eveSessionId: string;
-  secret: string;
-  streamAdvance: number;
-};
-
-type PendingAppend = {
-  ctx: HookContext;
-  event: HandleMessageStreamEvent;
-  streamAdvance: number;
-  readonly timeout: ReturnType<typeof setTimeout>;
-};
-
-const APPEND_INTERVAL_MS = 1_000;
-const persistEventMutation = makeFunctionReference<"mutation", PersistEventArgs, null>(
-  "persistence:persistEvent",
-);
-
-let client: ConvexHttpClient | undefined;
-const pendingAppends = new Map<string, PendingAppend>();
-const persistenceQueues = new Map<string, Promise<void>>();
-
-export function getEventKey(event: HandleMessageStreamEvent): string {
-  const data = (event as SequencedEvent).data;
-
-  return [
-    event.type,
-    data?.turnId ?? "session",
-    data?.sequence ?? "-",
-    data?.stepIndex ?? "-",
-    event.meta?.at ?? "-",
-  ].join(":");
-}
-
-export function toSerializableEvent(event: HandleMessageStreamEvent): Value {
-  return JSON.parse(JSON.stringify(event)) as Value;
-}
-
-function getClient(): { client: ConvexHttpClient; secret: string } {
+type BoundaryEvent = Extract<
+  HandleMessageStreamEvent,
+  { type: "session.completed" | "session.failed" | "session.waiting" }
+>;
+function persistenceClient() {
   const convexUrl = process.env.VITE_CONVEX_URL;
   const secret = process.env.EVE_HOOK_SECRET;
-
-  if (!convexUrl) {
-    throw new Error("VITE_CONVEX_URL is required.");
-  }
-
-  if (!secret) {
-    throw new Error("EVE_HOOK_SECRET is required.");
-  }
-
-  client ??= new ConvexHttpClient(convexUrl);
-  return { client, secret };
+  if (!convexUrl || !secret) throw new Error("Convex persistence is not configured.");
+  return { client: new ConvexHttpClient(convexUrl), secret };
 }
 
-function enqueueEvent(event: HandleMessageStreamEvent, ctx: HookContext, streamAdvance = 1) {
-  const sessionId = ctx.session.id;
-  const pending = (persistenceQueues.get(sessionId) ?? Promise.resolve())
-    .then(async () => {
-      const persistence = getClient();
-      await persistence.client.mutation(persistEventMutation, {
-        continuationToken: toClientContinuationToken(ctx.channel.continuationToken),
-        event: toSerializableEvent(event),
-        eventKey: `${sessionId}:${getEventKey(event)}`,
-        eveSessionId: sessionId,
-        secret: persistence.secret,
-        streamAdvance,
-      });
-    })
-    .catch((error) => console.error("Could not persist Eve event", error));
+function initiatorAttribute(ctx: HookContext, name: string): string | undefined {
+  const value = ctx.session.auth.initiator?.attributes[name];
+  if (typeof value === "string") return value;
+}
+async function beginTurn(
+  _event: Extract<HandleMessageStreamEvent, { type: "turn.started" }>,
+  ctx: HookContext,
+): Promise<void> {
+  if (ctx.session.parent) return;
+  const chatId = initiatorAttribute(ctx, CHAT_ID_ATTRIBUTE);
+  if (!isPublicChatId(chatId)) return;
 
-  persistenceQueues.set(sessionId, pending);
-  void pending.finally(() => {
-    if (persistenceQueues.get(sessionId) === pending) persistenceQueues.delete(sessionId);
+  const persistence = persistenceClient();
+  await persistence.client.mutation(api.persistence.beginTurn, {
+    chatId,
+    secret: persistence.secret,
+    sessionId: ctx.session.id,
+    startedAt: Date.now(),
   });
-
-  return pending;
 }
 
-function flushAppend(sessionId: string): void {
-  const pending = pendingAppends.get(sessionId);
-  if (!pending) return;
+async function commitTurn(event: BoundaryEvent, ctx: HookContext): Promise<void> {
+  if (ctx.session.parent) return;
+  const chatId = initiatorAttribute(ctx, CHAT_ID_ATTRIBUTE);
+  if (!isPublicChatId(chatId)) return;
 
-  clearTimeout(pending.timeout);
-  pendingAppends.delete(sessionId);
-  enqueueEvent(pending.event, pending.ctx, pending.streamAdvance);
-}
+  const originValue = initiatorAttribute(ctx, EVE_ORIGIN_ATTRIBUTE);
+  if (!originValue) throw new Error("Eve session origin is missing.");
 
-function handleEvent(event: HandleMessageStreamEvent, ctx: HookContext) {
-  const sessionId = ctx.session.id;
-  const isAppend = event.type === "message.appended" || event.type === "reasoning.appended";
+  const persistence = persistenceClient();
+  const turnId = ctx.session.turn.id;
+  const replayState = await persistence.client.query(api.persistence.replayState, {
+    chatId,
+    secret: persistence.secret,
+    sessionId: ctx.session.id,
+    turnId,
+  });
+  if (replayState.deleted) return;
+  if (replayState.committed) return;
 
-  if (!isAppend) {
-    flushAppend(sessionId);
-    return enqueueEvent(event, ctx);
+  const session = new Client({ host: originValue, redirect: "error" }).session({
+    sessionId: ctx.session.id,
+    streamIndex: replayState.streamIndex,
+  });
+  const replay: HandleMessageStreamEvent[] = [];
+  for await (const item of session.stream({ startIndex: replayState.streamIndex })) {
+    replay.push(item);
+    if (item.type === event.type) break;
   }
+  const checkpoint = compactTurn(replay, replayState.streamIndex);
+  if (checkpoint.turnId !== turnId) throw new Error("Eve replay returned a different turn.");
+  let continuationToken: string | undefined;
+  if (event.type === "session.waiting") continuationToken = event.data.continuationToken;
 
-  const previous = pendingAppends.get(sessionId);
-  if (previous) {
-    previous.ctx = ctx;
-    previous.event = event;
-    previous.streamAdvance += 1;
-    return;
-  }
-
-  const timeout = setTimeout(() => flushAppend(sessionId), APPEND_INTERVAL_MS);
-  pendingAppends.set(sessionId, { ctx, event, streamAdvance: 1, timeout });
+  await persistence.client.mutation(api.persistence.commitTurn, {
+    chatId,
+    completedAt: Date.now(),
+    continuationToken,
+    events: checkpoint.events,
+    searchText: checkpoint.searchText.slice(0, 100_000),
+    secret: persistence.secret,
+    sessionId: ctx.session.id,
+    status: checkpoint.status,
+    streamIndex: checkpoint.streamIndex,
+    turnId,
+  });
 }
 
 export default defineHook({
   events: {
-    "*": handleEvent,
+    "session.completed": commitTurn,
+    "session.failed": commitTurn,
+    "session.waiting": commitTurn,
+    "turn.started": beginTurn,
   },
 });

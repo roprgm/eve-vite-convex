@@ -2,39 +2,43 @@ import { describe, expect, it } from "vitest";
 
 import { projectEveChat, type StoredEveEvent } from "@/lib/eve-events";
 
-function userEvent(sessionId: string, message: string): StoredEveEvent {
+function userEvent(index: number, message: string, at: string): StoredEveEvent {
   return {
-    eveSessionId: sessionId,
     event: {
-      data: { message, sequence: 0, turnId: "turn_0" },
+      data: { message, sequence: index, turnId: `turn_${index}` },
+      meta: { at },
       type: "message.received",
     },
-    eventKey: `${sessionId}:message.received`,
+    index,
   };
 }
 
+const optimistic = {
+  createdAt: 20,
+  message: "second",
+  startIndex: 1,
+  submissionId: "submission-1",
+};
+
 describe("projectEveChat", () => {
-  it("renders one user message per persisted event", () => {
-    expect(projectEveChat([userEvent("run-1", "hi")]).messages).toHaveLength(1);
+  it("inserts an optimistic message after its checkpoint", () => {
+    const messages = projectEveChat(
+      [userEvent(0, "first", "2026-01-01T10:00:00.000Z")],
+      optimistic,
+    );
+    expect(messages.map(({ id }) => id)).toEqual(["turn_0:user", "optimistic:submission-1:user"]);
+    expect(messages.at(-1)?.createdAt).toBe(20);
   });
 
-  it("keeps identical turn IDs from separate eve runs distinct", () => {
-    const { messages } = projectEveChat([
-      userEvent("run-1", "first"),
-      userEvent("run-2", "second"),
-    ]);
-
-    expect(messages.map((message) => message.id)).toEqual([
-      "run-1:turn_0:user",
-      "run-2:turn_0:user",
-    ]);
-  });
-});
-
-describe("projectMessageCreatedAt", () => {
-  it("uses the persisted event time for the projected message", () => {
-    const event = { ...userEvent("run-1", "hi"), createdAt: 1_721_234_567_890 };
-
-    expect(projectEveChat([event]).messageCreatedAt.get("run-1:turn_0:user")).toBe(event.createdAt);
+  it("reconciles message.received without duplication", () => {
+    const messages = projectEveChat(
+      [
+        userEvent(0, "first", "2026-01-01T10:00:00.000Z"),
+        userEvent(1, "second", "2026-01-01T10:01:00.000Z"),
+      ],
+      optimistic,
+    );
+    expect(messages.map(({ id }) => id)).toEqual(["turn_0:user", "turn_1:user"]);
+    expect(messages.at(-1)?.createdAt).toBe(20);
   });
 });
