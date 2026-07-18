@@ -16,7 +16,7 @@ type Connection = {
   readonly controller: AbortController;
   index: number;
   readonly session: ClientSession;
-  status: "active" | "done" | "stopped";
+  status: "ready" | "running" | "stopped";
   turnId?: string;
 };
 
@@ -45,7 +45,7 @@ function createConnection(state: SessionState | undefined, streamIndex: number):
     controller: new AbortController(),
     index: streamIndex,
     session: client.session({ ...state, streamIndex }),
-    status: "active",
+    status: "running",
   };
 }
 
@@ -85,7 +85,7 @@ function optimisticMessage(
 
 function failConnection(chatId: string, connection: Connection, message: string): void {
   if (connection.status === "stopped" || connection.controller.signal.aborted) return;
-  connection.status = "done";
+  connection.status = "ready";
   updateRuntime(chatId, connection, { error: message });
 }
 
@@ -113,10 +113,14 @@ async function consumeStream(
   try {
     for await (const event of stream) {
       appendEvent(chatId, connection, event);
+      if (event.type === "session.failed") {
+        failConnection(chatId, connection, "This chat stopped unexpectedly.");
+        return;
+      }
       if (isCurrentTurnBoundaryEvent(event)) break;
     }
     if (connection.status === "stopped") return;
-    connection.status = "done";
+    connection.status = "ready";
     updateRuntime(chatId, connection, {});
   } catch {
     failConnection(chatId, connection, "Could not stream this chat.");
@@ -127,7 +131,7 @@ async function cancelTurn(chatId: string, connection: Connection): Promise<void>
   try {
     await connection.session.cancel({ turnId: connection.turnId });
   } catch {
-    connection.status = "done";
+    connection.status = "ready";
     updateRuntime(chatId, connection, { error: "Could not stop this chat." });
   }
 }
@@ -171,7 +175,7 @@ export function sendChat(
   { beforeSend, modelId = DEFAULT_MODEL_ID, sessionState }: SendChatOptions = {},
 ): void {
   const current = getChatRuntime(chatId);
-  if (current?.connection.status === "active") return;
+  if (current?.connection.status === "running") return;
   const state = sessionState ?? current?.connection.session.state;
   const startIndex = Math.max(state?.streamIndex ?? 0, current?.connection.index ?? 0);
   const connection = createConnection(state, startIndex);

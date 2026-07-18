@@ -1,12 +1,12 @@
 import { ConvexError, v } from "convex/values";
 
 import { isPublicChatId } from "../lib/chat-identity";
-import { mutation, type QueryCtx, query } from "./_generated/server";
+import { env, mutation, type QueryCtx, query } from "./_generated/server";
 
 const identity = { chatId: v.string(), secret: v.string(), sessionId: v.string() };
 const event = v.object({ event: v.any(), index: v.number() });
 function authorize(chatId: string, secret: string): void {
-  if (secret === process.env.EVE_HOOK_SECRET && isPublicChatId(chatId)) return;
+  if (secret === env.EVE_HOOK_SECRET && isPublicChatId(chatId)) return;
   throw new ConvexError("Invalid Eve persistence request.");
 }
 

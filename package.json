@@ -11,6 +11,7 @@
     "dev:eve": "eve dev --port 4879 --no-ui",
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:eve": "eve build && bun scripts/embed-convex-url.ts",
     "format": "biome format --write .",
     "test": "vitest run",
     "test:watch": "vitest"

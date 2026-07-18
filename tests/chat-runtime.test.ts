@@ -85,3 +85,26 @@ it("shows the optimistic message, then stops locally and cancels Eve", async () 
   await stopping;
   clearChatRuntime(chatId);
 });
+
+it("surfaces a terminal Eve failure", async () => {
+  const chatId = createPublicChatId();
+  mock.session = {
+    cancel: vi.fn(),
+    async send() {
+      return (async function* () {
+        yield {
+          data: { code: "FatalError", message: "Server Error", sessionId: "session-1" },
+          type: "session.failed",
+        } as HandleMessageStreamEvent;
+      })();
+    },
+    state: { sessionId: "session-1", streamIndex: 0 },
+  };
+
+  sendChat(chatId, { message: "Fail visibly" });
+  await vi.waitFor(() => {
+    expect(getChatRuntime(chatId)?.connection.status).toBe("ready");
+    expect(getChatRuntime(chatId)?.error).toBe("This chat stopped unexpectedly.");
+  });
+  clearChatRuntime(chatId);
+});

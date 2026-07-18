@@ -41,4 +41,7 @@ bunx convex env set EVE_HOOK_SECRET your-secret
 bun run dev
 ```
 
+For Vercel previews, configure `EVE_HOOK_SECRET` as a Convex preview default. The build then wires
+each Vercel preview to its matching Convex deployment automatically.
+
 Vite proxies `/eve/*` to eve on port 4879. Production hosting must rewrite `/c/*` to `app/index.html`.

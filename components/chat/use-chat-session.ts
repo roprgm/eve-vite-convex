@@ -84,7 +84,7 @@ export function useChatSession({ chat, chatId, checkpointEvents }: UseChatSessio
 
   useEffect(() => {
     if (status === "running" && chat) followChat(chatId, chat);
-    if (!runtimeStatus || runtimeStatus === "active") return;
+    if (!runtimeStatus || runtimeStatus === "running") return;
     if (checkpointed) clearChatRuntime(chatId);
   }, [chat, chatId, checkpointed, runtimeStatus, status]);
 
@@ -92,9 +92,9 @@ export function useChatSession({ chat, chatId, checkpointEvents }: UseChatSessio
   const visibleInput = availableInput(pendingInput);
   const sessionLimitReached = isSessionLimitRequest(pendingInput);
   const needsOption = Boolean(visibleInput?.options?.length && !visibleInput.allowFreeform);
-  const running = runtime?.connection.status === "active" || status === "running";
+  const running = (runtimeStatus ?? status) === "running";
   const ended = Boolean(chat?.sessionId && !chat.continuationToken);
-  const isGenerating = running && runtime?.connection.status !== "stopped";
+  const isGenerating = running;
   const error = chatError(sessionLimitReached, runtime?.error, chat);
   const canContinue = !sessionLimitReached && !ended;
   const waitingForCheckpoint = Boolean(runtime?.events.length) && !checkpointed;
