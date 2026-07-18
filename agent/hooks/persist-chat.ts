@@ -1,9 +1,10 @@
+import { getVercelOidcToken } from "@vercel/oidc";
 import { ConvexHttpClient } from "convex/browser";
 import { Client, type HandleMessageStreamEvent } from "eve/client";
 import { defineHook, type HookContext } from "eve/hooks";
 
 import { api } from "@/convex/_generated/api";
-import { CHAT_ID_ATTRIBUTE, EVE_ORIGIN_ATTRIBUTE, isPublicChatId } from "@/lib/chat-identity";
+import { CHAT_ID_ATTRIBUTE, isPublicChatId } from "@/lib/chat-identity";
 import { compactTurn } from "@/lib/eve-checkpoint";
 
 type BoundaryEvent = Extract<
@@ -15,6 +16,16 @@ function persistenceClient() {
   const secret = process.env.EVE_HOOK_SECRET;
   if (!convexUrl || !secret) throw new Error("Convex persistence is not configured.");
   return { client: new ConvexHttpClient(convexUrl), secret };
+}
+
+function replayClient(): Client {
+  const deploymentUrl = process.env.VERCEL_URL;
+  if (!deploymentUrl) return new Client({ host: "http://127.0.0.1:4879" });
+  return new Client({
+    auth: { vercelOidc: { token: getVercelOidcToken } },
+    host: `https://${deploymentUrl}`,
+    redirect: "error",
+  });
 }
 
 function initiatorAttribute(ctx: HookContext, name: string): string | undefined {
@@ -43,9 +54,6 @@ async function commitTurn(event: BoundaryEvent, ctx: HookContext): Promise<void>
   const chatId = initiatorAttribute(ctx, CHAT_ID_ATTRIBUTE);
   if (!isPublicChatId(chatId)) return;
 
-  const originValue = initiatorAttribute(ctx, EVE_ORIGIN_ATTRIBUTE);
-  if (!originValue) throw new Error("Eve session origin is missing.");
-
   const persistence = persistenceClient();
   const turnId = ctx.session.turn.id;
   const replayState = await persistence.client.query(api.persistence.replayState, {
@@ -57,7 +65,7 @@ async function commitTurn(event: BoundaryEvent, ctx: HookContext): Promise<void>
   if (replayState.deleted) return;
   if (replayState.committed) return;
 
-  const session = new Client({ host: originValue, redirect: "error" }).session({
+  const session = replayClient().session({
     sessionId: ctx.session.id,
     streamIndex: replayState.streamIndex,
   });

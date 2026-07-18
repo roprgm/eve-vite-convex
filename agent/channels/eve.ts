@@ -1,11 +1,6 @@
 import { ForbiddenError, localDev, none, vercelOidc } from "eve/channels/auth";
 import { defaultEveAuth, eveChannel } from "eve/channels/eve";
-import {
-  CHAT_ID_ATTRIBUTE,
-  CHAT_ID_HEADER,
-  EVE_ORIGIN_ATTRIBUTE,
-  isPublicChatId,
-} from "@/lib/chat-identity";
+import { CHAT_ID_ATTRIBUTE, CHAT_ID_HEADER, isPublicChatId } from "@/lib/chat-identity";
 import { isModelId, MODEL_HEADER } from "@/lib/models";
 
 export default eveChannel({
@@ -26,7 +21,6 @@ export default eveChannel({
     const attributes: Record<string, string | readonly string[]> = {
       ...auth.attributes,
       [CHAT_ID_ATTRIBUTE]: chatId,
-      [EVE_ORIGIN_ATTRIBUTE]: new URL(ctx.eve.request.url).origin,
     };
     const model = ctx.eve.request.headers.get(MODEL_HEADER);
     if (isModelId(model)) attributes.model = model;

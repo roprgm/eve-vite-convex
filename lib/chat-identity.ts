@@ -1,6 +1,5 @@
 export const CHAT_ID_ATTRIBUTE = "chatId";
 export const CHAT_ID_HEADER = "x-eve-chat-id";
-export const EVE_ORIGIN_ATTRIBUTE = "eveOrigin";
 
 const CHAT_ID_PATTERN = /^[A-Za-z0-9_-]{16}$/;
 
