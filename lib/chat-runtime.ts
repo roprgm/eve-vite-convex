@@ -16,7 +16,8 @@ type Connection = {
   readonly controller: AbortController;
   index: number;
   readonly session: ClientSession;
-  status: "ready" | "running" | "stopped";
+  sessionId?: string;
+  status: "disconnected" | "failed" | "running" | "settled" | "stopped";
   turnId?: string;
 };
 
@@ -46,6 +47,7 @@ function createConnection(state: SessionState | undefined, streamIndex: number):
     controller: new AbortController(),
     index: streamIndex,
     session: client.session({ ...state, streamIndex }),
+    sessionId: state?.sessionId,
     status: "running",
   };
 }
@@ -87,10 +89,20 @@ function optimisticSubmission(
   };
 }
 
-function failConnection(chatId: string, connection: Connection, message: string): void {
+function failConnection(chatId: string, connection: Connection, error: string): void {
   if (connection.status === "stopped" || connection.controller.signal.aborted) return;
-  connection.status = "ready";
-  updateRuntime(chatId, connection, { error: message });
+  connection.status = "failed";
+  updateRuntime(chatId, connection, { error });
+}
+
+function disconnectConnection(chatId: string, connection: Connection): void {
+  if (!connection.sessionId) {
+    failConnection(chatId, connection, "Could not stream this chat.");
+    return;
+  }
+  if (connection.status === "stopped" || connection.controller.signal.aborted) return;
+  connection.status = "disconnected";
+  updateRuntime(chatId, connection, {});
 }
 
 function appendEvent(
@@ -118,24 +130,31 @@ async function consumeStream(
     for await (const event of stream) {
       appendEvent(chatId, connection, event);
       if (event.type === "session.failed") {
-        failConnection(chatId, connection, "This chat stopped unexpectedly.");
-        return;
+        updateRuntime(chatId, connection, { error: "This chat stopped unexpectedly." });
       }
-      if (isCurrentTurnBoundaryEvent(event)) break;
+      if (!isCurrentTurnBoundaryEvent(event)) continue;
+      if (connection.status === "stopped") return;
+      connection.status = "settled";
+      updateRuntime(chatId, connection, {});
+      return;
     }
-    if (connection.status === "stopped") return;
-    connection.status = "ready";
-    updateRuntime(chatId, connection, {});
+    disconnectConnection(chatId, connection);
   } catch {
-    failConnection(chatId, connection, "Could not stream this chat.");
+    disconnectConnection(chatId, connection);
   }
 }
 
 async function cancelTurn(chatId: string, connection: Connection): Promise<void> {
+  const session = connection.session.state.sessionId
+    ? connection.session
+    : connection.sessionId
+      ? client.session({ sessionId: connection.sessionId, streamIndex: connection.index })
+      : undefined;
+  if (!session) return;
   try {
-    await connection.session.cancel({ turnId: connection.turnId });
+    await session.cancel({ turnId: connection.turnId });
   } catch {
-    connection.status = "ready";
+    connection.status = "failed";
     updateRuntime(chatId, connection, { error: "Could not stop this chat." });
   }
 }
@@ -163,6 +182,7 @@ async function sendTurn(
       headers: { ...input.headers, [CHAT_ID_HEADER]: chatId, [MODEL_HEADER]: modelId },
       signal: connection.controller.signal,
     });
+    connection.sessionId = connection.session.state.sessionId ?? connection.sessionId;
     if (afterSend) {
       try {
         await afterSend();
@@ -201,17 +221,25 @@ export function sendChat(
 
 export function followChat(chatId: string, state: SessionState): void {
   if (!state.sessionId) return;
-  if (getChatRuntime(chatId)) return;
-  const connection = createConnection(state, state.streamIndex);
+  const current = getChatRuntime(chatId);
+  if (current && !["disconnected", "failed"].includes(current.connection.status)) return;
+  const startIndex = Math.max(state.streamIndex, current?.connection.index ?? 0);
+  const connection = createConnection(state, startIndex);
+  current?.connection.controller.abort();
   setRuntime(chatId, {
     connection,
-    events: [],
+    events: current?.events ?? [],
+    optimistic: current?.optimistic,
   });
-  void consumeStream(
-    chatId,
-    connection,
-    connection.session.stream({ signal: connection.controller.signal }),
-  );
+  void Promise.resolve()
+    .then(() =>
+      consumeStream(
+        chatId,
+        connection,
+        connection.session.stream({ signal: connection.controller.signal, startIndex }),
+      ),
+    )
+    .catch(() => disconnectConnection(chatId, connection));
 }
 
 export async function stopChat(chatId: string, fallback?: SessionState): Promise<void> {
@@ -226,7 +254,6 @@ export async function stopChat(chatId: string, fallback?: SessionState): Promise
     events: current?.events ?? [],
   });
   connection.controller.abort();
-  if (!connection.session.state.sessionId) return;
   await cancelTurn(chatId, connection);
 }
 

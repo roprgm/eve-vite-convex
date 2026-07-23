@@ -1,4 +1,5 @@
 import { useConvexMutation } from "@convex-dev/react-query";
+import { useConvexConnectionState } from "convex/react";
 import type { EveMessage, InputResponse, SendTurnPayload, SessionState } from "eve/client";
 import { useEffect, useMemo } from "react";
 
@@ -72,11 +73,29 @@ function availableInput(input: ReturnType<typeof findPendingInput>) {
   return input;
 }
 
-function isCheckpointed(chat: StoredChat | undefined, runtime: ChatRuntime | undefined): boolean {
-  if (!chat) return false;
-  if (!runtime) return false;
-  if (!runtime.events.length) return chat.streamIndex > runtime.connection.index;
-  return chat.streamIndex >= runtime.connection.index;
+export function isCheckpointed(
+  chat: StoredChat | undefined,
+  runtime: ChatRuntime | undefined,
+): boolean {
+  if (!chat || !runtime) return false;
+  return (
+    chat.status !== "running" &&
+    chat.streamIndex >= runtime.connection.index &&
+    (!runtime.optimistic || chat.streamIndex > runtime.optimistic.startIndex)
+  );
+}
+
+export function isChatGenerating(
+  chat: StoredChat | undefined,
+  runtime: ChatRuntime | undefined,
+): boolean {
+  const runtimeStatus = runtime?.connection.status;
+  return (
+    !isCheckpointed(chat, runtime) &&
+    runtimeStatus !== "failed" &&
+    runtimeStatus !== "stopped" &&
+    (chat?.status === "running" || runtimeStatus === "running" || runtimeStatus === "disconnected")
+  );
 }
 
 export function useChatSession({
@@ -86,7 +105,9 @@ export function useChatSession({
   inputResponses,
 }: UseChatSessionOptions) {
   const recordInputResponse = useConvexMutation(api.chats.recordInputResponse);
+  const connectionCount = useConvexConnectionState().connectionCount;
   const status = chat?.status;
+  const sessionId = chat?.sessionId;
   const selectedModel = useChatStore((state) => state.selectedModel);
   const runtime = useChatRuntime(chatId);
   const runtimeStatus = runtime?.connection.status;
@@ -98,22 +119,26 @@ export function useChatSession({
   const checkpointed = isCheckpointed(chat, runtime);
 
   useEffect(() => {
-    if (status === "running" && chat) followChat(chatId, chat);
-    if (!runtimeStatus || runtimeStatus === "running") return;
+    void connectionCount;
+    if (status === "running" && sessionId) {
+      followChat(chatId, { sessionId, streamIndex: cursor });
+      return;
+    }
     if (checkpointed) clearChatRuntime(chatId);
-  }, [chat, chatId, checkpointed, runtimeStatus, status]);
+  }, [chatId, checkpointed, connectionCount, cursor, sessionId, status]);
 
   const pendingInput = findPendingInput(messages);
   const visibleInput = availableInput(pendingInput);
   const sessionLimitReached = isSessionLimitRequest(pendingInput);
   const needsOption = Boolean(visibleInput?.options?.length && !visibleInput.allowFreeform);
-  const running = (runtimeStatus ?? status) === "running";
+  const running = isChatGenerating(chat, runtime);
   const ended = Boolean(chat?.sessionId && !chat.continuationToken);
   const isGenerating = running;
   const error = chatError(sessionLimitReached, runtime?.error, chat);
   const canContinue = !sessionLimitReached && !ended;
-  const waitingForCheckpoint = Boolean(runtime?.events.length) && !checkpointed;
-  const canSend = canContinue && !waitingForCheckpoint;
+  const waitingForCheckpoint =
+    (runtimeStatus === "settled" || runtimeStatus === "stopped") && !checkpointed;
+  const canSend = canContinue && !running && !waitingForCheckpoint;
   const acceptsText = Boolean(chat) && canSend && !needsOption;
   const disabled = running || !acceptsText;
 
