@@ -18,21 +18,24 @@ function getReasoningLabel(isActive: boolean): string {
 
 type ChatMessageProps = {
   readonly createdAt?: number;
+  readonly inputDisabled: boolean;
   readonly isActive: boolean;
   readonly message: EveMessage;
+  readonly onSelectInput: (optionId: string) => void;
+  readonly pendingInputId?: string;
 };
 
-type AnsweredInputRequest = {
+type MessageInputRequest = {
   readonly request: EveMessageInputRequest;
-  readonly response: InputResponse;
+  readonly response?: InputResponse;
 };
 
-function answeredInputRequests(message: EveMessage): readonly AnsweredInputRequest[] {
+function messageInputRequests(message: EveMessage): readonly MessageInputRequest[] {
   return message.parts.flatMap((part) => {
     if (part.type !== "dynamic-tool") return [];
     const request = part.toolMetadata?.eve?.inputRequest;
     const response = part.toolMetadata?.eve?.inputResponse;
-    if (!request || !response) return [];
+    if (!request) return [];
     return [{ request, response }];
   });
 }
@@ -56,10 +59,16 @@ function MessageActions({
   );
 }
 
-export function ChatMessage({ createdAt, isActive, message }: ChatMessageProps) {
+export function ChatMessage({
+  createdAt,
+  inputDisabled,
+  isActive,
+  message,
+  onSelectInput,
+  pendingInputId,
+}: ChatMessageProps) {
   const textParts = message.parts.filter((part) => part.type === "text");
   const text = textParts.map((part) => part.text).join("\n\n");
-  const answeredInputs = answeredInputRequests(message);
 
   if (message.role === "user") {
     if (!text) return null;
@@ -77,10 +86,11 @@ export function ChatMessage({ createdAt, isActive, message }: ChatMessageProps) 
 
   const reasoningParts = message.parts.filter((part) => part.type === "reasoning");
   const reasoning = reasoningParts.map((part) => part.text).join("\n\n");
+  const inputRequests = messageInputRequests(message).filter(
+    ({ request, response }) => response || request.requestId === pendingInputId,
+  );
   const reasoningLabel = getReasoningLabel(isActive);
-  if (!reasoning && !text && answeredInputs.length === 0) return null;
-
-  if (isActive && !text && answeredInputs.length === 0) return null;
+  if (!reasoning && !text && inputRequests.length === 0) return null;
 
   return (
     <MessageScrollerItem messageId={message.id}>
@@ -89,9 +99,18 @@ export function ChatMessage({ createdAt, isActive, message }: ChatMessageProps) 
           <ModelActivity details={reasoning} isAnimated={isActive} label={reasoningLabel} />
         )}
         {text && <MarkdownMessage isAnimating={isActive} text={text} />}
-        {answeredInputs.map(({ request, response }) => (
-          <InputRequest key={request.requestId} request={request} response={response} />
-        ))}
+        {inputRequests.map(({ request, response }) =>
+          response ? (
+            <InputRequest key={request.requestId} request={request} response={response} />
+          ) : (
+            <InputRequest
+              disabled={inputDisabled}
+              key={request.requestId}
+              onSelect={onSelectInput}
+              request={request}
+            />
+          ),
+        )}
         {text && !isActive && <MessageActions createdAt={createdAt} text={text} />}
       </article>
     </MessageScrollerItem>

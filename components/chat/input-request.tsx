@@ -29,7 +29,7 @@ export function InputRequest({ disabled, onSelect, request, response }: InputReq
   return (
     <section
       aria-labelledby={titleId}
-      className="my-4 rounded-xl border bg-card p-4 text-card-foreground"
+      className="mt-3 rounded-xl border bg-card p-4 text-card-foreground"
     >
       <h2 className="font-medium leading-6" id={titleId}>
         {request.prompt}

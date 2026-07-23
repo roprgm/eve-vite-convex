@@ -25,11 +25,17 @@ type UseChatSessionOptions = {
   readonly inputResponses: readonly StoredInputResponse[];
 };
 
-function hasAssistantTextAfterLatestUser(messages: readonly EveMessage[]): boolean {
+function hasAssistantOutputAfterLatestUser(messages: readonly EveMessage[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message || message.role === "user") return false;
-    if (message.parts.some((part) => part.type === "text" && part.text.trim())) return true;
+    if (
+      message.parts.some(
+        (part) => (part.type === "text" || part.type === "reasoning") && Boolean(part.text.trim()),
+      )
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -48,7 +54,7 @@ function chatError(
   return "This chat ended unexpectedly. Start a new chat to continue.";
 }
 
-function activityLabel(
+export function getActivityLabel(
   isGenerating: boolean,
   messages: readonly EveMessage[],
   hasInput: boolean,
@@ -56,7 +62,7 @@ function activityLabel(
 ): string | undefined {
   if (!isGenerating) return;
   if (hasInput) return;
-  if (hasAssistantTextAfterLatestUser(messages)) return;
+  if (hasAssistantOutputAfterLatestUser(messages)) return;
   if (error) return;
   return "Thinking...";
 }
@@ -147,7 +153,7 @@ export function useChatSession({
 
   return {
     answerQuestion,
-    activityLabel: activityLabel(isGenerating, messages, Boolean(pendingInput), error),
+    activityLabel: getActivityLabel(isGenerating, messages, Boolean(pendingInput), error),
     disabled,
     error,
     isGenerating,
