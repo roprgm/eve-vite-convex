@@ -13,9 +13,12 @@ export function ChatConversation({ session }: ChatConversationProps) {
       {session.messages.map((message) => (
         <ChatMessage
           createdAt={message.createdAt}
+          inputDisabled={session.isGenerating}
           isActive={session.isGenerating && message.metadata?.status === "streaming"}
           key={message.id}
           message={message}
+          onSelectInput={session.answerQuestion}
+          pendingInputId={session.pendingInput?.requestId}
         />
       ))}
       {session.activityLabel && (

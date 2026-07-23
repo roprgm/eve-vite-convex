@@ -1,47 +1,76 @@
-# eve-vite-convex
+# Eve + Vite + Convex
 
-A minimal durable chat built with [eve](https://eve.dev), Convex, React Router, Vite, and TypeScript.
+A minimal durable chat built with [Eve](https://eve.dev/), Vite and Convex.
 
-> [!WARNING]
-> This demo has no authentication. Anyone who can reach it can read or modify every chat.
-> Add authentication and authorization before deploying it publicly.
+Includes a ready-to-use chat interface, durable conversation history and real-time synchronization
+across clients. Use it as a starting point for Eve apps that need chats to survive refreshes,
+disconnects and multiple open windows.
 
-## Architecture
+> Authentication is intentionally out of scope. Public deployments share chat history between
+> visitors.
 
-`/` is a new chat. On first submit the browser creates a short public ID, renders the message
-optimistically, creates the Convex chat, and navigates to `/c/<chatId>` immediately. Eve starts after
-the chat exists. URLs never expose Convex document IDs, and unknown chat IDs are Not Found.
+## Features
 
-Eve owns the live turn; Convex stores chat metadata and completed turn checkpoints. The backend Eve
-hook marks a turn running, then replays Eve's durable stream at its terminal boundary and atomically
-stores one compact checkpoint and cursor. It never writes token deltas or relies on the browser to
-finalize persistence.
+- 💬 **Minimal chat interface** — Messages, Markdown, reasoning and input requests.
+- 💾 **Durable conversations** — Finished turns are persisted server-side in Convex, even if the
+  client disconnects.
+- 🔄 **Real-time sync** — Open the same chat in multiple windows and watch every update as it
+  happens.
+- ⚡ **Live responses** — In-progress turns render directly from Eve without waiting for
+  persistence.
+- 🗂️ **Conversation history** — Create, rename, continue and delete multiple chats.
 
-Every open window follows a running chat from its saved cursor. A finished chat renders from Convex
-only. Stop aborts the local stream and cancels the Eve turn.
+## How it works
 
-> Eve does not currently dispatch authored hooks for workflow-level fatal failures, so this demo
-> cannot persist that boundary without upstream support.
+The chat interface connects to an Eve channel, which runs the agent and streams responses to the
+browser. Convex stores completed turns and chat metadata, including editable titles, and keeps
+every open client synchronized.
 
-## Setup
+An Eve hook saves finished turns directly to Convex. While a response is in progress, clients
+follow Eve's live stream; once it finishes, the same turn becomes part of the durable Convex
+history. Because the hook runs on the backend, the browser does not need to stay connected.
+
+## Run locally
+
+Install the dependencies and configure a Convex development deployment:
 
 ```bash
 bun install
 bunx convex dev --once
 ```
 
-Set the same long random `EVE_HOOK_SECRET` in `.env.local` and Convex, then add
-`AI_GATEWAY_API_KEY` to `.env.local` (see [.env.example](./.env.example)).
+`VITE_CONVEX_URL` is created automatically by Convex.
 
-`EVE_HOOK_SECRET` authenticates calls from the Eve hook to public Convex functions. It is sent only
-between the two backends and is never stored in `chats` or `turns`.
+Choose how Eve accesses the model. Link the project to Vercel to use OIDC:
+
+```bash
+bunx eve link
+```
+
+Or add a Vercel AI Gateway key to `.env.local`:
+
+```dotenv
+AI_GATEWAY_API_KEY=your-ai-gateway-key
+```
+
+Finally, set the same persistence secret in `.env.local` and Convex:
+
+```dotenv
+EVE_HOOK_SECRET=your-secret
+```
 
 ```bash
 bunx convex env set EVE_HOOK_SECRET your-secret
+```
+
+Start the app:
+
+```bash
 bun run dev
 ```
 
-For Vercel previews, configure `EVE_HOOK_SECRET` as a Convex preview default. The build then wires
-each Vercel preview to its matching Convex deployment automatically.
+Open [http://localhost:5173](http://localhost:5173).
 
-Vite proxies `/eve/*` to eve on port 4879. Production hosting must rewrite `/c/*` to `app/index.html`.
+## Contributing
+
+Contributions are welcome. Keep changes small, focused and easy to understand.

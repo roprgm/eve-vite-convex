@@ -30,10 +30,16 @@ export const get = query({
       .withIndex("by_chat_id", (index) => index.eq("chatId", chatId))
       .unique();
     if (!chat) return null;
-    const turns = await ctx.db
-      .query("turns")
-      .withIndex("by_chat_and_stream_index", (index) => index.eq("chatId", chatId))
-      .collect();
+    const [inputResponses, turns] = await Promise.all([
+      ctx.db
+        .query("inputResponses")
+        .withIndex("by_chat_id", (index) => index.eq("chatId", chatId))
+        .collect(),
+      ctx.db
+        .query("turns")
+        .withIndex("by_chat_and_stream_index", (index) => index.eq("chatId", chatId))
+        .collect(),
+    ]);
     return {
       chat: {
         continuationToken: chat.continuationToken,
@@ -43,6 +49,12 @@ export const get = query({
         title: chat.title,
       },
       events: turns.flatMap(({ events }) => events),
+      inputResponses: inputResponses.map(({ _creationTime, optionId, requestId, text }) => ({
+        createdAt: _creationTime,
+        optionId,
+        requestId,
+        text,
+      })),
     };
   },
 });
@@ -88,6 +100,46 @@ export const rename = mutation({
   },
 });
 
+export const recordInputResponse = mutation({
+  args: {
+    chatId: v.string(),
+    optionId: v.optional(v.string()),
+    requestId: v.string(),
+    text: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (!isPublicChatId(args.chatId)) throw new ConvexError("Chat not found.");
+    if (!args.requestId) throw new ConvexError("Question id cannot be empty.");
+    if (args.optionId === undefined && args.text === undefined) {
+      throw new ConvexError("An answer is required.");
+    }
+
+    const chat = await ctx.db
+      .query("chats")
+      .withIndex("by_chat_id", (index) => index.eq("chatId", args.chatId))
+      .unique();
+    if (!chat) throw new ConvexError("Chat not found.");
+
+    const existing = await ctx.db
+      .query("inputResponses")
+      .withIndex("by_chat_and_request", (index) =>
+        index.eq("chatId", args.chatId).eq("requestId", args.requestId),
+      )
+      .unique();
+    if (existing) {
+      if (existing.optionId === args.optionId && existing.text === args.text) return;
+      throw new ConvexError("This question was already answered.");
+    }
+
+    await ctx.db.insert("inputResponses", {
+      chatId: args.chatId,
+      optionId: args.optionId,
+      requestId: args.requestId,
+      text: args.text,
+    });
+  },
+});
+
 export const remove = mutation({
   args: { chatId: v.string() },
   handler: async (ctx, { chatId }) => {
@@ -100,20 +152,26 @@ export const remove = mutation({
     if (chat.status === "running") throw new ConvexError("Stop this chat before deleting it.");
 
     await ctx.db.delete(chat._id);
-    await ctx.scheduler.runAfter(0, internal.chats.removeTurns, { chatId });
+    await ctx.scheduler.runAfter(0, internal.chats.removeChatData, { chatId });
   },
 });
 
-export const removeTurns = internalMutation({
+export const removeChatData = internalMutation({
   args: { chatId: v.string() },
   handler: async (ctx, { chatId }) => {
-    const turns = await ctx.db
-      .query("turns")
-      .withIndex("by_chat_and_stream_index", (index) => index.eq("chatId", chatId))
-      .take(DELETE_BATCH_SIZE);
-    await Promise.all(turns.map((turn) => ctx.db.delete(turn._id)));
-    if (turns.length === DELETE_BATCH_SIZE) {
-      await ctx.scheduler.runAfter(0, internal.chats.removeTurns, { chatId });
+    const [inputResponses, turns] = await Promise.all([
+      ctx.db
+        .query("inputResponses")
+        .withIndex("by_chat_id", (index) => index.eq("chatId", chatId))
+        .take(DELETE_BATCH_SIZE),
+      ctx.db
+        .query("turns")
+        .withIndex("by_chat_and_stream_index", (index) => index.eq("chatId", chatId))
+        .take(DELETE_BATCH_SIZE),
+    ]);
+    await Promise.all([...inputResponses, ...turns].map((document) => ctx.db.delete(document._id)));
+    if (inputResponses.length === DELETE_BATCH_SIZE || turns.length === DELETE_BATCH_SIZE) {
+      await ctx.scheduler.runAfter(0, internal.chats.removeChatData, { chatId });
     }
   },
 });

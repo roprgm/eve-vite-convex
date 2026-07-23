@@ -46,6 +46,36 @@ it("creates the optimistic runtime before Eve starts", async () => {
   clearChatRuntime(chatId);
 });
 
+it("persists an answer after Eve accepts it", async () => {
+  const chatId = createPublicChatId();
+  const order: string[] = [];
+  mock.session = {
+    cancel: vi.fn(),
+    async send() {
+      order.push("sent");
+      return (async function* () {
+        yield { type: "session.completed" } as HandleMessageStreamEvent;
+      })();
+    },
+    state: { continuationToken: "token-1", sessionId: "session-1", streamIndex: 0 },
+  };
+
+  sendChat(
+    chatId,
+    { inputResponses: [{ optionId: "mystery", requestId: "question-1" }] },
+    {
+      afterSend: async () => {
+        order.push("saved");
+      },
+    },
+  );
+  expect(getChatRuntime(chatId)?.optimistic?.inputResponses).toEqual([
+    { optionId: "mystery", requestId: "question-1" },
+  ]);
+  await vi.waitFor(() => expect(order).toEqual(["sent", "saved"]));
+  clearChatRuntime(chatId);
+});
+
 it("shows the optimistic message, then stops locally and cancels Eve", async () => {
   const chatId = createPublicChatId();
   const cancelCalls: Array<{ readonly turnId?: string } | undefined> = [];

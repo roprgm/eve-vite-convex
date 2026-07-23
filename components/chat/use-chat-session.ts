@@ -1,6 +1,8 @@
-import type { EveMessage, SendTurnPayload, SessionState } from "eve/client";
+import { useConvexMutation } from "@convex-dev/react-query";
+import type { EveMessage, InputResponse, SendTurnPayload, SessionState } from "eve/client";
 import { useEffect, useMemo } from "react";
 
+import { api } from "@/convex/_generated/api";
 import {
   type ChatRuntime,
   clearChatRuntime,
@@ -10,7 +12,7 @@ import {
   useChatRuntime,
 } from "@/lib/chat-runtime";
 import { useChatStore } from "@/lib/chat-store";
-import { projectEveChat, type StoredEveEvent } from "@/lib/eve-events";
+import { projectEveChat, type StoredEveEvent, type StoredInputResponse } from "@/lib/eve-events";
 import { findPendingInput, isSessionLimitRequest } from "@/lib/pending-input";
 
 export type ChatStatus = "error" | "ready" | "running";
@@ -20,13 +22,20 @@ type UseChatSessionOptions = {
   readonly chat?: StoredChat;
   readonly chatId: string;
   readonly checkpointEvents: readonly StoredEveEvent[];
+  readonly inputResponses: readonly StoredInputResponse[];
 };
 
-function hasAssistantTextAfterLatestUser(messages: readonly EveMessage[]): boolean {
+function hasAssistantOutputAfterLatestUser(messages: readonly EveMessage[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message || message.role === "user") return false;
-    if (message.parts.some((part) => part.type === "text" && part.text.trim())) return true;
+    if (
+      message.parts.some(
+        (part) => (part.type === "text" || part.type === "reasoning") && Boolean(part.text.trim()),
+      )
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -45,7 +54,7 @@ function chatError(
   return "This chat ended unexpectedly. Start a new chat to continue.";
 }
 
-function activityLabel(
+export function getActivityLabel(
   isGenerating: boolean,
   messages: readonly EveMessage[],
   hasInput: boolean,
@@ -53,7 +62,7 @@ function activityLabel(
 ): string | undefined {
   if (!isGenerating) return;
   if (hasInput) return;
-  if (hasAssistantTextAfterLatestUser(messages)) return;
+  if (hasAssistantOutputAfterLatestUser(messages)) return;
   if (error) return;
   return "Thinking...";
 }
@@ -70,7 +79,13 @@ function isCheckpointed(chat: StoredChat | undefined, runtime: ChatRuntime | und
   return chat.streamIndex >= runtime.connection.index;
 }
 
-export function useChatSession({ chat, chatId, checkpointEvents }: UseChatSessionOptions) {
+export function useChatSession({
+  chat,
+  chatId,
+  checkpointEvents,
+  inputResponses,
+}: UseChatSessionOptions) {
+  const recordInputResponse = useConvexMutation(api.chats.recordInputResponse);
   const status = chat?.status;
   const selectedModel = useChatStore((state) => state.selectedModel);
   const runtime = useChatRuntime(chatId);
@@ -78,8 +93,8 @@ export function useChatSession({ chat, chatId, checkpointEvents }: UseChatSessio
   const cursor = chat?.streamIndex ?? 0;
   const messages = useMemo(() => {
     const events = runtime?.events.filter((event) => event.index >= cursor) ?? [];
-    return projectEveChat([...checkpointEvents, ...events], runtime?.optimistic);
-  }, [checkpointEvents, cursor, runtime?.events, runtime?.optimistic]);
+    return projectEveChat([...checkpointEvents, ...events], inputResponses, runtime?.optimistic);
+  }, [checkpointEvents, cursor, inputResponses, runtime?.events, runtime?.optimistic]);
   const checkpointed = isCheckpointed(chat, runtime);
 
   useEffect(() => {
@@ -102,10 +117,25 @@ export function useChatSession({ chat, chatId, checkpointEvents }: UseChatSessio
   const acceptsText = Boolean(chat) && canSend && !needsOption;
   const disabled = running || !acceptsText;
 
-  function send(input: SendTurnPayload): void {
+  function send(input: SendTurnPayload, afterSend?: () => Promise<unknown>): void {
     if (!chat) return;
     if (running || !canSend) return;
-    sendChat(chatId, input, { modelId: selectedModel, sessionState: chat });
+    sendChat(chatId, input, {
+      afterSend,
+      modelId: selectedModel,
+      sessionState: chat,
+    });
+  }
+
+  function respond(response: InputResponse): void {
+    send({ inputResponses: [response] }, () =>
+      recordInputResponse({
+        chatId,
+        optionId: response.optionId,
+        requestId: response.requestId,
+        text: response.text,
+      }),
+    );
   }
 
   function sendMessage(message: string): void {
@@ -113,17 +143,17 @@ export function useChatSession({ chat, chatId, checkpointEvents }: UseChatSessio
       send({ message });
       return;
     }
-    send({ inputResponses: [{ requestId: visibleInput.requestId, text: message }] });
+    respond({ requestId: visibleInput.requestId, text: message });
   }
 
   function answerQuestion(optionId: string): void {
     if (!visibleInput) return;
-    send({ inputResponses: [{ requestId: visibleInput.requestId, optionId }] });
+    respond({ requestId: visibleInput.requestId, optionId });
   }
 
   return {
     answerQuestion,
-    activityLabel: activityLabel(isGenerating, messages, Boolean(pendingInput), error),
+    activityLabel: getActivityLabel(isGenerating, messages, Boolean(pendingInput), error),
     disabled,
     error,
     isGenerating,

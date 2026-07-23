@@ -45,18 +45,17 @@ export function ChatSidebar({ isOpen, onClose, selectedChatId }: ChatSidebarProp
 
   return (
     <>
-      {isOpen && (
-        <button
-          aria-hidden="true"
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          onClick={onClose}
-          tabIndex={-1}
-          type="button"
-        />
-      )}
+      <button
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 z-40 bg-black/60 opacity-0 transition-opacity data-[open=true]:pointer-events-auto data-[open=true]:opacity-100 md:hidden"
+        data-open={isOpen}
+        onClick={onClose}
+        tabIndex={-1}
+        type="button"
+      />
       <aside
         className={cn(
-          "invisible fixed inset-y-0 left-0 z-50 flex w-[min(18rem,85vw)] -translate-x-full flex-col border-r bg-sidebar p-3 text-sidebar-foreground shadow-2xl transition md:visible md:static md:z-auto md:w-72 md:translate-x-0 md:p-2 md:shadow-none",
+          "invisible fixed inset-y-0 left-0 z-50 flex w-[min(18rem,85vw)] -translate-x-full flex-col border-r bg-sidebar p-3 text-sidebar-foreground shadow-2xl transition-[translate,visibility] duration-200 md:visible md:static md:z-auto md:w-72 md:translate-x-0 md:p-2 md:shadow-none",
           isOpen && "visible translate-x-0",
         )}
       >

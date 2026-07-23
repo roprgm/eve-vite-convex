@@ -17,6 +17,15 @@ export default defineSchema({
     .index("by_session_id", ["sessionId"])
     .index("by_updated_at", ["updatedAt"]),
 
+  inputResponses: defineTable({
+    chatId: v.string(),
+    optionId: v.optional(v.string()),
+    requestId: v.string(),
+    text: v.optional(v.string()),
+  })
+    .index("by_chat_id", ["chatId"])
+    .index("by_chat_and_request", ["chatId", "requestId"]),
+
   turns: defineTable({
     chatId: v.string(),
     events: v.array(storedEvent),

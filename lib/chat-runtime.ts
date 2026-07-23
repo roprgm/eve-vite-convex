@@ -9,7 +9,7 @@ import {
 import { create } from "zustand";
 
 import { CHAT_ID_HEADER } from "@/lib/chat-identity";
-import type { OptimisticChatMessage, StoredEveEvent } from "@/lib/eve-events";
+import type { OptimisticChatSubmission, StoredEveEvent } from "@/lib/eve-events";
 import { DEFAULT_MODEL_ID, MODEL_HEADER, type ModelId } from "@/lib/models";
 
 type Connection = {
@@ -24,7 +24,7 @@ export type ChatRuntime = {
   readonly connection: Connection;
   readonly error?: string;
   readonly events: readonly StoredEveEvent[];
-  readonly optimistic?: OptimisticChatMessage;
+  readonly optimistic?: OptimisticChatSubmission;
 };
 
 type RuntimeStore = {
@@ -32,6 +32,7 @@ type RuntimeStore = {
 };
 
 type SendChatOptions = {
+  readonly afterSend?: () => Promise<unknown>;
   readonly beforeSend?: Promise<unknown>;
   readonly modelId?: ModelId;
   readonly sessionState?: SessionState;
@@ -70,14 +71,17 @@ function updateRuntime(chatId: string, connection: Connection, update: Partial<C
   });
 }
 
-function optimisticMessage(
+function optimisticSubmission(
   input: SendTurnPayload,
   startIndex: number,
-): OptimisticChatMessage | undefined {
-  if (typeof input.message !== "string") return;
+): OptimisticChatSubmission | undefined {
+  const message = typeof input.message === "string" ? input.message : undefined;
+  const inputResponses = input.inputResponses?.length ? input.inputResponses : undefined;
+  if (!message && !inputResponses) return;
   return {
     createdAt: Date.now(),
-    message: input.message,
+    inputResponses,
+    message,
     startIndex,
     submissionId: crypto.randomUUID(),
   };
@@ -142,6 +146,7 @@ async function sendTurn(
   input: SendTurnPayload,
   modelId: ModelId,
   beforeSend?: Promise<unknown>,
+  afterSend?: () => Promise<unknown>,
 ): Promise<void> {
   if (beforeSend) {
     try {
@@ -158,6 +163,13 @@ async function sendTurn(
       headers: { ...input.headers, [CHAT_ID_HEADER]: chatId, [MODEL_HEADER]: modelId },
       signal: connection.controller.signal,
     });
+    if (afterSend) {
+      try {
+        await afterSend();
+      } catch {
+        updateRuntime(chatId, connection, { error: "Could not save this answer." });
+      }
+    }
     if (connection.status === "stopped") {
       await cancelTurn(chatId, connection);
       connection.controller.abort();
@@ -172,7 +184,7 @@ async function sendTurn(
 export function sendChat(
   chatId: string,
   input: SendTurnPayload,
-  { beforeSend, modelId = DEFAULT_MODEL_ID, sessionState }: SendChatOptions = {},
+  { afterSend, beforeSend, modelId = DEFAULT_MODEL_ID, sessionState }: SendChatOptions = {},
 ): void {
   const current = getChatRuntime(chatId);
   if (current?.connection.status === "running") return;
@@ -182,9 +194,9 @@ export function sendChat(
   setRuntime(chatId, {
     connection,
     events: current?.events ?? [],
-    optimistic: optimisticMessage(input, startIndex),
+    optimistic: optimisticSubmission(input, startIndex),
   });
-  void sendTurn(chatId, connection, input, modelId, beforeSend);
+  void sendTurn(chatId, connection, input, modelId, beforeSend, afterSend);
 }
 
 export function followChat(chatId: string, state: SessionState): void {
