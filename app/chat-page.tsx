@@ -25,9 +25,18 @@ function Chat({ chatId }: { readonly chatId: string }) {
 
   const chat = detail?.chat;
   const checkpointEvents = detail?.events ?? [];
+  const inputResponses = detail?.inputResponses ?? [];
   const title = chat?.title ?? "New chat";
 
-  return <ChatView chat={chat} chatId={chatId} checkpointEvents={checkpointEvents} title={title} />;
+  return (
+    <ChatView
+      chat={chat}
+      chatId={chatId}
+      checkpointEvents={checkpointEvents}
+      inputResponses={inputResponses}
+      title={title}
+    />
+  );
 }
 
 export function ChatPage() {

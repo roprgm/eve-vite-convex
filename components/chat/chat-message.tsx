@@ -1,5 +1,6 @@
-import type { EveMessage } from "eve/client";
+import type { EveMessage, EveMessageInputRequest, InputResponse } from "eve/client";
 
+import { InputRequest } from "@/components/chat/input-request";
 import { MarkdownMessage } from "@/components/chat/markdown-message";
 import { ModelActivity } from "@/components/chat/model-activity";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -20,6 +21,21 @@ type ChatMessageProps = {
   readonly isActive: boolean;
   readonly message: EveMessage;
 };
+
+type AnsweredInputRequest = {
+  readonly request: EveMessageInputRequest;
+  readonly response: InputResponse;
+};
+
+function answeredInputRequests(message: EveMessage): readonly AnsweredInputRequest[] {
+  return message.parts.flatMap((part) => {
+    if (part.type !== "dynamic-tool") return [];
+    const request = part.toolMetadata?.eve?.inputRequest;
+    const response = part.toolMetadata?.eve?.inputResponse;
+    if (!request || !response) return [];
+    return [{ request, response }];
+  });
+}
 
 function MessageActions({
   createdAt,
@@ -43,6 +59,7 @@ function MessageActions({
 export function ChatMessage({ createdAt, isActive, message }: ChatMessageProps) {
   const textParts = message.parts.filter((part) => part.type === "text");
   const text = textParts.map((part) => part.text).join("\n\n");
+  const answeredInputs = answeredInputRequests(message);
 
   if (message.role === "user") {
     if (!text) return null;
@@ -61,9 +78,9 @@ export function ChatMessage({ createdAt, isActive, message }: ChatMessageProps) 
   const reasoningParts = message.parts.filter((part) => part.type === "reasoning");
   const reasoning = reasoningParts.map((part) => part.text).join("\n\n");
   const reasoningLabel = getReasoningLabel(isActive);
-  if (!reasoning && !text) return null;
+  if (!reasoning && !text && answeredInputs.length === 0) return null;
 
-  if (isActive && !text) return null;
+  if (isActive && !text && answeredInputs.length === 0) return null;
 
   return (
     <MessageScrollerItem messageId={message.id}>
@@ -71,12 +88,11 @@ export function ChatMessage({ createdAt, isActive, message }: ChatMessageProps) 
         {reasoning && (
           <ModelActivity details={reasoning} isAnimated={isActive} label={reasoningLabel} />
         )}
-        {text && (
-          <>
-            <MarkdownMessage isAnimating={isActive} text={text} />
-            {!isActive && <MessageActions createdAt={createdAt} text={text} />}
-          </>
-        )}
+        {text && <MarkdownMessage isAnimating={isActive} text={text} />}
+        {answeredInputs.map(({ request, response }) => (
+          <InputRequest key={request.requestId} request={request} response={response} />
+        ))}
+        {text && !isActive && <MessageActions createdAt={createdAt} text={text} />}
       </article>
     </MessageScrollerItem>
   );

@@ -5,20 +5,22 @@ import { InputRequest } from "@/components/chat/input-request";
 import { type StoredChat, useChatSession } from "@/components/chat/use-chat-session";
 import { Alert } from "@/components/ui/alert";
 import { MessageScroller, MessageScrollerItem } from "@/components/ui/message-scroller";
-import type { StoredEveEvent } from "@/lib/eve-events";
+import type { StoredEveEvent, StoredInputResponse } from "@/lib/eve-events";
 
 type ChatViewProps = {
   readonly chat?: StoredChat;
   readonly chatId: string;
   readonly checkpointEvents: readonly StoredEveEvent[];
+  readonly inputResponses: readonly StoredInputResponse[];
   readonly title: string;
 };
 
-export function ChatView({ chat, chatId, checkpointEvents, title }: ChatViewProps) {
+export function ChatView({ chat, chatId, checkpointEvents, inputResponses, title }: ChatViewProps) {
   const session = useChatSession({
     chat,
     chatId,
     checkpointEvents,
+    inputResponses,
   });
   const hasNotices = Boolean(session.pendingInput || session.error);
 
