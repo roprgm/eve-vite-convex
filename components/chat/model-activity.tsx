@@ -17,14 +17,14 @@ export function ModelActivity({ details, isAnimated = true, label }: ModelActivi
 
   if (!details) {
     return (
-      <article aria-label={label} className="pt-3 pb-8" role="status">
+      <article aria-label={label} className="activity pt-3 pb-8" role="status">
         {status}
       </article>
     );
   }
 
   return (
-    <details className="reasoning-details group pb-2">
+    <details className="activity reasoning-details group pb-2">
       <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
         {status}
         <ChevronRight aria-hidden="true" className="transition-transform group-open:rotate-90" />
